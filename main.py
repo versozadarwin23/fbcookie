@@ -11,12 +11,11 @@ import urllib.request
 import webbrowser
 from datetime import datetime
 
-# --- PLAYWRIGHT IMPORTS ---
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "1"
-UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
-VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
+__version__ = "2"
+UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/autopost/refs/heads/main/main.py"
+VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/autopost/refs/heads/main/version.txt"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -454,8 +453,29 @@ class FacebookAutomationGUI(ctk.CTk):
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-notifications", "--mute-audio", "--disable-dev-shm-usage"]
+                headless=False,
+                args=
+                [
+                    "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
+                    "--disable-notifications",
+                    "--no-sandbox",
+                    "--mute-audio",
+                    "--disable-popup-blocking",
+                    "--disable-infobars"
+                    "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
+                    "--disable-notifications",
+                    "--disable-dev-shm-usage",
+                    "--disable-extensions",
+                    "--disable-infobars",
+                    "--ignore-certificate-errors"
+                    "--renderer-process-limit=1",
+                    "--single-process",
+                    "--disable-background-networking",
+                    "--disable-sync",
+                    "--disable-translate"
+                    "--disk-cache-size=1"
+                    "--media-cache-size=1"
+                ]
             )
             self.active_browsers.append(browser)
 
@@ -485,43 +505,44 @@ class FacebookAutomationGUI(ctk.CTk):
                     if cookies:
                         context.add_cookies(cookies)
 
-                    # Ginamit ang 60 * 1000 na format na hinihingi mo
-
-                    page.goto("https://m.facebook.com/", timeout=60 * 1000)
-
                     for ln, (link, cap_file) in enumerate(self.job_list_global, 1):
                         if not self.is_running:
                             break
                         sel_cap = "---"
                         success = False
-
-                        # --- BINAGO DITO: Ginawang 2 na lang ang pag-retry ---
                         for attempt in range(2):
                             if not self.is_running:
                                 break
                             try:
-                                # Ginamit rin ang 60 * 1000 timeout dito
-                                page.goto("https://m.facebook.com/composer/", timeout=60 * 1000)
+                                client = context.new_cdp_session(page)
+                                client.send("Network.setUserAgentOverride", {
+                                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                    "platform": "Win32",
+                                    "acceptLanguage": "en-US,en;q=0.9"
+                                })
 
-                                trigger_xpath = "xpath=//div[@role='textbox'] | //textarea | //div[@role='button'][contains(@aria-label, \"What's on your mind?\")]"
-                                trigger_locator = page.locator(trigger_xpath).first
-                                trigger_locator.wait_for(state="visible", timeout=15000)
-                                trigger_locator.click()
+                                blocked_urls = [
+                                    "*.jpg", "*.jpeg", "*.png", "*.gif",
+                                    "*.css",
+                                    "*.mp4", "*.avi",
+                                    "*.woff", "*.woff2", "*.ttf",
+                                    "*.ico",
+                                    "*favicon*",
+                                ]
 
-                                time.sleep(1)
+                                client.send("Network.enable")
+                                client.send("Network.setBlockedURLs", {"urls": blocked_urls})
 
-                                page.keyboard.type(link)
-                                time.sleep(6)
+                                page.goto(f"https://www.facebook.com/sharer/sharer.php?u={link}", timeout=90 * 1000)
+                                dialog_xpath = "xpath=//*[@aria-label='Close composer dialog']"
+                                dialog_locator = page.locator(dialog_xpath).first
 
-                                page.keyboard.press("Control+A")
-                                page.keyboard.press("Backspace")
-                                time.sleep(1)
-
-                                for _ in range(5):
-                                    page.keyboard.press("Backspace")
-
-                                time.sleep(1)
-
+                                try:
+                                    dialog_locator.wait_for(state="visible", timeout=30000)
+                                except PlaywrightTimeoutError:
+                                    self.log_row(worker_id, link, "---", f"EXPIRED COOKIE Account {acc_idx} LINK {ln}", "ERROR")
+                                    success = False
+                                    break
                                 if cap_file and os.path.exists(cap_file):
                                     try:
                                         with open(cap_file, "r", encoding="utf-8") as f:
@@ -533,23 +554,20 @@ class FacebookAutomationGUI(ctk.CTk):
                                     except:
                                         pass
 
-                                post_xpath = "xpath=//button[@name='view_post'] | //button[@value='Post'] | //input[@value='Post'] | //div[translate(@aria-label, 'POST', 'post')='post'] | //span[translate(text(), 'POST', 'post')='post']"
+                                post_xpath = "xpath=//*[@aria-label='Share']"
                                 post_btn = page.locator(post_xpath).first
                                 post_btn.scroll_into_view_if_needed()
                                 post_btn.click()
-
-                                validation_xpath = "xpath=//*[contains(@aria-label, 'Just now') or text()='Just now' or contains(text(), 'Just now')]"
                                 try:
-                                    page.locator(validation_xpath).first.wait_for(state="attached", timeout=15000)
-                                    self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}",
-                                                 "SUCCESS")
+                                    post_btn.wait_for(state="detached", timeout=30000)
+                                    self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}", "SUCCESS")
                                     self.total_shares += 1
                                     self.total_attempts += 1
                                     self.update_stats()
                                     success = True
                                     break
-                                except PlaywrightTimeoutError:
-                                    raise Exception("Post verification failed (No 'Just now')")
+                                except:
+                                    pass
 
                             except Exception as e:
                                 try:
@@ -557,15 +575,10 @@ class FacebookAutomationGUI(ctk.CTk):
                                 except:
                                     pass
 
-                        # KAPAG HINDI SUCCESS SA 2 TRIES, TITIGIL NA YUNG CURRENT ACCOUNT AT LILIPAT SA SUSUNOD
                         if not success:
-                            self.log_row(worker_id, link, "---", f"FAILED [LINK {ln}] - NEXT ACCOUNT", "ERROR")
                             self.total_attempts += 1
                             self.update_stats()
                             break
-
-                        d = random.randint(5, 10)
-                        time.sleep(d)
 
                     if context:
                         context.close()
@@ -689,4 +702,3 @@ class FacebookAutomationGUI(ctk.CTk):
 if __name__ == "__main__":
     app = FacebookAutomationGUI()
     app.mainloop()
-
