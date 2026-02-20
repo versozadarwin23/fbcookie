@@ -6,22 +6,13 @@ import os
 import json
 import random
 import threading
-import sys
+import queue
 import urllib.request
 import webbrowser
-import queue
-import subprocess
 from datetime import datetime
 
-# --- SELENIUM & WEBDRIVER MANAGER ---
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from webdriver_manager.chrome import ChromeDriverManager
+# --- PLAYWRIGHT IMPORTS ---
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 __version__ = "1"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/autopost/refs/heads/main/main.py"
@@ -134,16 +125,12 @@ class PairFrame(ctk.CTkFrame):
 class FacebookAutomationGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.start_time = None
         self.log_storage = {"auto": [], "debug": [], "sys": []}
-        self.current_log_device = "GLOBAL"
         self.saved_settings = {}
-        self.active_drivers = []
+        self.active_browsers = []
         self.cookie_queue = queue.Queue()
 
-        self.shared_driver_path = None
-
-        self.title(f"AutoPost PC V{__version__}")
+        self.title(f"AutoPost V{__version__}")
         self.geometry("1100x700")
         self.after(0, lambda: self.state("zoomed"))
         self.configure(fg_color=COLORS["bg_main"])
@@ -199,7 +186,7 @@ class FacebookAutomationGUI(ctk.CTk):
         header = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], height=50, corner_radius=0)
         header.grid(row=0, column=0, sticky="ew")
 
-        ctk.CTkLabel(header, text=f"AUTOPOST PC V{__version__}", font=FONT_HEADER, text_color=COLORS["primary"]).pack(
+        ctk.CTkLabel(header, text=f"AUTOPOST V{__version__}", font=FONT_HEADER, text_color=COLORS["primary"]).pack(
             side="left", padx=15, pady=10)
         self.status_badge = ctk.CTkLabel(header, text="● IDLE", font=("Roboto", 12, "bold"),
                                          text_color=COLORS["text_sub"])
@@ -278,10 +265,6 @@ class FacebookAutomationGUI(ctk.CTk):
                       border_width=1, border_color=COLORS["primary"], font=FONT_BODY,
                       command=self.save_config).pack(fill="x", padx=12, pady=(5, 5))
 
-        ctk.CTkButton(control_frame, text="☁ Check Updates", height=30, fg_color="#238636", hover_color="#2EA043",
-                      font=FONT_BODY, command=lambda: self.check_for_updates(True)).pack(fill="x", padx=12,
-                                                                                         pady=(5, 15))
-
         right_panel = ctk.CTkFrame(self.tab_dash, fg_color=COLORS["bg_card"], corner_radius=10)
         right_panel.grid(row=0, column=1, sticky="nsew")
         header = ctk.CTkFrame(right_panel, fg_color="transparent")
@@ -354,7 +337,7 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.bind("<Double-1>", self.on_log_double_click)
 
     def log_row(self, worker_id, link, caption, status, level="INFO"):
-        ts = self.get_manila_time()
+        ts = datetime.now().strftime("%I:%M:%S %p")
         d_name = worker_id
 
         disp_link = (link[:30] + '...') if len(link) > 30 else link
@@ -363,18 +346,12 @@ class FacebookAutomationGUI(ctk.CTk):
 
         self.after(10, lambda: self._safe_insert(self.table_auto, (ts, d_name, disp_link, disp_cap, status), level))
 
-    def log_debug(self, worker_id, action, details):
-        # Prevent heavy terminal printing that causes lag
-        pass
-
     def _safe_insert(self, tree, values, tag):
         try:
             tree.insert("", "end", values=values, tags=(tag,))
-            # FIXED GUI LAG: Mas pinagaan ang pag-delete ng logs table
             children = tree.get_children()
             if len(children) > 100:
                 tree.delete(children[0])
-            # Inalis ang automatic tree.see() na nag-fo-force scroll tuwing nag-u-update
         except:
             pass
 
@@ -396,9 +373,6 @@ class FacebookAutomationGUI(ctk.CTk):
         self.stop_automation()
         self.destroy()
         os._exit(0)
-
-    def get_manila_time(self):
-        return datetime.now().strftime("%I:%M:%S %p")
 
     def browse_global_cookie(self):
         f = filedialog.askopenfilename(filetypes=[("Txt", "*.txt")])
@@ -453,52 +427,22 @@ class FacebookAutomationGUI(ctk.CTk):
             for i, f in enumerate(self.pair_widgets):
                 f.header_label.configure(text=f"📍 LINK #{i + 1}")
 
-    def parse_cookies(self, cookie_str):
+    def parse_playwright_cookies(self, cookie_str):
         cookies = []
         for pair in cookie_str.split(";"):
             if "=" in pair:
                 name, value = pair.strip().split("=", 1)
-                cookies.append({"name": name, "value": value, "domain": ".facebook.com"})
+                cookies.append({
+                    "name": name,
+                    "value": value,
+                    "domain": ".facebook.com",
+                    "path": "/"
+                })
         return cookies
 
+    # --- PLAYWRIGHT AUTOMATION ENGINE ---
     def run_pc_automation(self, worker_id):
-        global active_box
         self.log_row(worker_id, "---", "---", "🚀 STARTED", "INFO")
-
-        mobile_emulation = {
-            "deviceMetrics": {"width": 360, "height": 640, "pixelRatio": 3.0},
-            "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
-        }
-
-        options = Options()
-        options.add_experimental_option("mobileEmulation", mobile_emulation)
-
-        options.add_argument("--headless=new")
-
-        args = [
-            "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
-            "--disable-notifications",
-            "--no-sandbox",
-            "--mute-audio",
-            "--disable-popup-blocking",
-            "--disable-infobars",
-            "--disable-dev-shm-usage",
-            "--disable-extensions",
-            "--ignore-certificate-errors",
-            "--renderer-process-limit=1",
-            "--single-process",
-            "--disable-background-networking",
-            "--disable-sync",
-            "--disable-translate",
-            "--disk-cache-size=1",
-            "--media-cache-size=1"
-        ]
-        for arg in args:
-            options.add_argument(arg)
-
-        options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
-
-        service = ChromeService(executable_path=self.shared_driver_path, log_output=os.devnull)
 
         try:
             pre_wait = float(self.dash_pre_delay.get())
@@ -508,154 +452,140 @@ class FacebookAutomationGUI(ctk.CTk):
         limit = 0
         processed = 0
 
-        while self.is_running:
-            if limit > 0 and processed >= limit:
-                self.log_row(worker_id, "---", "---", "⛔ LIMIT REACHED", "WARN")
-                break
-            try:
-                data = self.cookie_queue.get(timeout=2)
-                cookie_str = data['cookie']
-                acc_idx = data['index']
-            except queue.Empty:
-                if self.cookie_queue.empty():
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-notifications", "--mute-audio", "--disable-dev-shm-usage"]
+            )
+            self.active_browsers.append(browser)
+
+            while self.is_running:
+                if limit > 0 and processed >= limit:
+                    self.log_row(worker_id, "---", "---", "⛔ LIMIT REACHED", "WARN")
                     break
-                continue
-
-            driver = None
-            processed += 1
-            try:
-                driver = webdriver.Chrome(service=service, options=options)
-                self.active_drivers.append(driver)
-
-                wait = WebDriverWait(driver, 20)
-                driver.get("https://m.facebook.com/")
-                for c in self.parse_cookies(cookie_str):
-                    try:
-                        driver.add_cookie(c)
-                    except:
-                        pass
-
-                for ln, (link, cap_file) in enumerate(self.job_list_global, 1):
-                    if not self.is_running:
+                try:
+                    data = self.cookie_queue.get(timeout=2)
+                    cookie_str = data['cookie']
+                    acc_idx = data['index']
+                except queue.Empty:
+                    if self.cookie_queue.empty():
                         break
-                    sel_cap = "---"
-                    success = False
-                    for attempt in range(3):
+                    continue
+
+                processed += 1
+                context = None
+                try:
+                    context = browser.new_context(
+                        viewport={'width': 360, 'height': 640},
+                        user_agent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+                    )
+                    page = context.new_page()
+
+                    cookies = self.parse_playwright_cookies(cookie_str)
+                    if cookies:
+                        context.add_cookies(cookies)
+
+                    # Ginamit ang 60 * 1000 na format na hinihingi mo
+
+                    page.goto("https://m.facebook.com/", timeout=60 * 1000)
+
+                    for ln, (link, cap_file) in enumerate(self.job_list_global, 1):
                         if not self.is_running:
                             break
-                        try:
-                            driver.get("https://m.facebook.com/composer/")
+                        sel_cap = "---"
+                        success = False
 
-                            trigger_xpath = "//div[@role='textbox'] | //textarea | //div[@role='button'][contains(@aria-label, \"What's on your mind?\")]"
-                            box_trigger = wait.until(EC.element_to_be_clickable((By.XPATH, trigger_xpath)))
-                            box_trigger.click()
-
+                        # --- BINAGO DITO: Ginawang 2 na lang ang pag-retry ---
+                        for attempt in range(2):
+                            if not self.is_running:
+                                break
                             try:
-                                active_box = driver.switch_to.active_element
-                                time.sleep(0.5)
-                                driver.execute_script("arguments[0].value = arguments[1];", active_box, link)
-                                time.sleep(0.5)
-                                active_box.send_keys(link)
+                                # Ginamit rin ang 60 * 1000 timeout dito
+                                page.goto("https://m.facebook.com/composer/", timeout=60 * 1000)
+
+                                trigger_xpath = "xpath=//div[@role='textbox'] | //textarea | //div[@role='button'][contains(@aria-label, \"What's on your mind?\")]"
+                                trigger_locator = page.locator(trigger_xpath).first
+                                trigger_locator.wait_for(state="visible", timeout=15000)
+                                trigger_locator.click()
+
+                                time.sleep(1)
+
+                                page.keyboard.type(link)
                                 time.sleep(6)
-                                active_box.send_keys(Keys.CONTROL, "a")
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.BACK_SPACE)
-                                time.sleep(0.5)
-                            except:
-                                active_box.send_keys(link)
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.CONTROL, "a")
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.BACK_SPACE)
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.ESCAPE)
-                                time.sleep(0.5)
 
-                            box_trigger.send_keys(Keys.BACK_SPACE)
-                            time.sleep(0.5)
+                                page.keyboard.press("Control+A")
+                                page.keyboard.press("Backspace")
+                                time.sleep(1)
 
-                            try:
-                                preview_xpath = "//div[@role='button'][contains(@aria-label, 'Remove suggestion')]"
-                                WebDriverWait(driver, 60).until(
-                                    EC.presence_of_element_located((By.XPATH, preview_xpath)))
-                            except:
-                                pass
+                                for _ in range(5):
+                                    page.keyboard.press("Backspace")
 
-                            trigger_xpath = "//div[@role='textbox'] | //textarea | //div[@role='button'][contains(@aria-label, \"What's on your mind?\")]"
+                                time.sleep(1)
 
-                            WebDriverWait(driver, 60).until(
-                                EC.presence_of_element_located((By.XPATH, trigger_xpath))).click()
-                            try:
-                                active_box.send_keys(Keys.CONTROL, "a")
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.BACK_SPACE)
-                                time.sleep(0.5)
-                                active_box.send_keys(Keys.ESCAPE)
-                                time.sleep(0.5)
-                            except:
-                                pass
+                                if cap_file and os.path.exists(cap_file):
+                                    try:
+                                        with open(cap_file, "r", encoding="utf-8") as f:
+                                            lines = [x.strip() for x in f if x.strip()]
+                                        if lines:
+                                            sel_cap = random.choice(lines)
+                                            page.keyboard.type(sel_cap)
+                                            time.sleep(pre_wait)
+                                    except:
+                                        pass
 
-                            if cap_file and os.path.exists(cap_file):
+                                post_xpath = "xpath=//button[@name='view_post'] | //button[@value='Post'] | //input[@value='Post'] | //div[translate(@aria-label, 'POST', 'post')='post'] | //span[translate(text(), 'POST', 'post')='post']"
+                                post_btn = page.locator(post_xpath).first
+                                post_btn.scroll_into_view_if_needed()
+                                post_btn.click()
+
+                                validation_xpath = "xpath=//*[contains(@aria-label, 'Just now') or text()='Just now' or contains(text(), 'Just now')]"
                                 try:
-                                    with open(cap_file, "r", encoding="utf-8") as f:
-                                        lines = [x.strip() for x in f if x.strip()]
-                                    if lines:
-                                        sel_cap = random.choice(lines)
-                                        active_box.send_keys(sel_cap)
-                                        time.sleep(pre_wait)
+                                    page.locator(validation_xpath).first.wait_for(state="attached", timeout=15000)
+                                    self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}",
+                                                 "SUCCESS")
+                                    self.total_shares += 1
+                                    self.total_attempts += 1
+                                    self.update_stats()
+                                    success = True
+                                    break
+                                except PlaywrightTimeoutError:
+                                    raise Exception("Post verification failed (No 'Just now')")
+
+                            except Exception as e:
+                                try:
+                                    page.reload()
                                 except:
                                     pass
 
-                            post_xpath = "//button[@name='view_post'] | //button[@value='Post'] | //input[@value='Post'] | //div[translate(@aria-label, 'POST', 'post')='post'] | //span[translate(text(), 'POST', 'post')='post']"
-                            post_btn = wait.until(EC.presence_of_element_located((By.XPATH, post_xpath)))
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", post_btn)
-                            driver.execute_script("arguments[0].click();", post_btn)
+                        # KAPAG HINDI SUCCESS SA 2 TRIES, TITIGIL NA YUNG CURRENT ACCOUNT AT LILIPAT SA SUSUNOD
+                        if not success:
+                            self.log_row(worker_id, link, "---", f"FAILED [LINK {ln}] - NEXT ACCOUNT", "ERROR")
+                            self.total_attempts += 1
+                            self.update_stats()
+                            break
 
-                            try:
-                                validation_xpath = "//*[contains(@aria-label, 'Just now') or text()='Just now' or contains(text(), 'Just now')]"
-                                WebDriverWait(driver, 10).until(
-                                    EC.presence_of_element_located((By.XPATH, validation_xpath)))
-                                self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}",
-                                             "SUCCESS")
-                                self.total_shares += 1
-                                self.total_attempts += 1
-                                self.update_stats()
-                                success = True
-                                break
-                            except Exception as e:
-                                raise Exception("Post verification failed")
+                        d = random.randint(5, 10)
+                        time.sleep(d)
 
-                        except Exception as e:
-                            try:
-                                driver.refresh()
-                            except:
-                                pass
+                    if context:
+                        context.close()
+                except Exception as e:
+                    self.log_row(worker_id, "---", "---", f"CRASH: {str(e)[:30]}", "ERROR")
+                    if context:
+                        try:
+                            context.close()
+                        except:
+                            pass
+                finally:
+                    if self.is_running:
+                        try:
+                            self.cookie_queue.task_done()
+                        except:
+                            pass
 
-                    if not success:
-                        self.log_row(worker_id, link, "---", f"FAILED [LINK {ln}] - NEXT ACCOUNT", "ERROR")
-                        self.total_attempts += 1
-                        self.update_stats()
-                        break
-
-                    d = random.randint(5, 10)
-                    time.sleep(d)
-
-                if driver in self.active_drivers:
-                    self.active_drivers.remove(driver)
-                driver.quit()
-            except Exception as e:
-                self.log_row(worker_id, "---", "---", f"CRASH: {str(e)[:30]}", "ERROR")
-                if driver:
-                    try:
-                        driver.quit()
-                    except:
-                        pass
-            finally:
-                if self.is_running:
-                    try:
-                        self.cookie_queue.task_done()
-                    except:
-                        pass
+            if browser in self.active_browsers:
+                self.active_browsers.remove(browser)
+            browser.close()
 
         self.active_worker_count -= 1
         self.overall_stats.update_devices(self.active_worker_count)
@@ -684,28 +614,14 @@ class FacebookAutomationGUI(ctk.CTk):
             messagebox.showerror("Error", "Cookie file empty/error!")
             return
 
-        # FIXED GUI LAG: Inilipat sa Background Thread ang pag-download ng driver para hindi mag-freeze ang app
-        if not self.shared_driver_path:
-            self.status_badge.configure(text="● LOADING DRIVER...", text_color=COLORS["warning"])
-            self.start_btn.configure(state="disabled")
-
-            def load_driver_bg():
-                try:
-                    self.shared_driver_path = ChromeDriverManager().install()
-                    # Kapag okay na, itutuloy na ang workers sa main thread
-                    self.after(0, lambda: self._launch_workers(ac))
-                except Exception as e:
-                    self.after(0, lambda: messagebox.showerror("Driver Error", f"Failed to load Chrome Driver:\n{e}"))
-                    self.after(0, lambda: self.status_badge.configure(text="● IDLE", text_color=COLORS["text_sub"]))
-                    self.after(0, lambda: self.start_btn.configure(state="normal"))
-
-            threading.Thread(target=load_driver_bg, daemon=True).start()
-        else:
-            self._launch_workers(ac)
+        self._launch_workers(ac)
 
     def _launch_workers(self, ac):
         num_accounts = len(ac)
+
+        # DITO MO I-EDIT ANG NUMBER OF THREADS (1 hanggang 10 ay recommended):
         max_threads_cap = 10
+
         num_threads = min(num_accounts, max_threads_cap)
 
         if num_threads < 1:
@@ -759,16 +675,12 @@ class FacebookAutomationGUI(ctk.CTk):
             self.cookie_queue.queue.clear()
 
         def kill():
-            for d in list(self.active_drivers):
+            for b in list(self.active_browsers):
                 try:
-                    d.quit()
+                    b.close()
                 except:
                     pass
-            self.active_drivers = []
-            create_no_window = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            if os.name == 'nt':
-                subprocess.run(["taskkill", "/F", "/IM", "chromedriver.exe", "/T"], creationflags=create_no_window,
-                               capture_output=True)
+            self.active_browsers = []
             self.after(0, lambda: messagebox.showinfo("Stopped", "Automation Force Stopped."))
 
         threading.Thread(target=kill, daemon=True).start()
