@@ -453,7 +453,7 @@ class FacebookAutomationGUI(ctk.CTk):
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,
+                headless=True,
                 args=
                 [
                     "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
@@ -702,3 +702,4 @@ class FacebookAutomationGUI(ctk.CTk):
 if __name__ == "__main__":
     app = FacebookAutomationGUI()
     app.mainloop()
+
