@@ -1,3 +1,4 @@
+import sys
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 import customtkinter as ctk
@@ -176,7 +177,22 @@ class FacebookAutomationGUI(ctk.CTk):
         msg = f"A new update is available! (Version V{remote_version})\n\nWould you like to download and install the update now?"
         response = messagebox.askyesno("Update Available", msg)
         if response:
-            pass
+            try:
+                req = urllib.request.Request(UPDATE_URL, headers={'Cache-Control': 'no-cache'})
+                with urllib.request.urlopen(req, timeout=10) as download_response:
+                    new_code = download_response.read().decode('utf-8')
+
+                current_file = os.path.abspath(__file__)
+                with open(current_file, 'w', encoding='utf-8') as f:
+                    f.write(new_code)
+
+                messagebox.showinfo("Update Complete",
+                                    "The application has been updated successfully. It will now restart.")
+
+                os.execl(sys.executable, sys.executable, *sys.argv)
+
+            except Exception as e:
+                messagebox.showerror("Update Failed", f"An error occurred while updating:\n{e}")
 
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
@@ -453,7 +469,7 @@ class FacebookAutomationGUI(ctk.CTk):
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,
+                headless=False,
                 args=
                 [
                     "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
@@ -702,4 +718,3 @@ class FacebookAutomationGUI(ctk.CTk):
 if __name__ == "__main__":
     app = FacebookAutomationGUI()
     app.mainloop()
-
