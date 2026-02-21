@@ -552,7 +552,7 @@ class FacebookAutomationGUI(ctk.CTk):
                                         pass
 
                                 browser = p.chromium.launch(
-                                    headless=False,
+                                    headless=True,
                                     args=[
                                         "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
                                         "--disable-notifications",
@@ -794,3 +794,4 @@ class FacebookAutomationGUI(ctk.CTk):
 if __name__ == "__main__":
     app = FacebookAutomationGUI()
     app.mainloop()
+
