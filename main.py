@@ -10,11 +10,11 @@ import threading
 import queue
 import urllib.request
 import webbrowser
-import traceback  # <-- BAGONG IMPORT PARA SA DEBUGGING
+import traceback
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "3"
+__version__ = "4"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -168,8 +168,7 @@ class FacebookAutomationGUI(ctk.CTk):
                     if manual:
                         self.after(0, lambda: messagebox.showinfo("Up to Date", f"Latest Version: V{__version__}"))
             except Exception as e:
-                print("\n[DEBUG] Error checking for updates:")
-                traceback.print_exc()
+                pass
             finally:
                 if manual:
                     self.after(0, lambda: self.status_badge.configure(text="● IDLE", text_color=COLORS["text_sub"]))
@@ -193,8 +192,6 @@ class FacebookAutomationGUI(ctk.CTk):
                                     "The application has been updated successfully. It will now restart.")
                 os.execl(sys.executable, sys.executable, *sys.argv)
             except Exception as e:
-                print("\n[DEBUG] Update Failed:")
-                traceback.print_exc()
                 messagebox.showerror("Update Failed", f"An error occurred while updating:\n{e}")
                 self.after(120000, self.check_for_updates)
         else:
@@ -381,7 +378,7 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.heading("Caption", text="CAPTION", anchor="center")
         self.table_auto.column("Caption", width=250, anchor="center")
         self.table_auto.heading("Status", text="STATUS", anchor="center")
-        self.table_auto.column("Status", width=150, anchor="center")
+        self.table_auto.column("Status", width=300, anchor="center")
 
         sb1 = ctk.CTkScrollbar(tree_f1, command=self.table_auto.yview)
         self.table_auto.configure(yscrollcommand=sb1.set)
@@ -409,8 +406,7 @@ class FacebookAutomationGUI(ctk.CTk):
                 tree.delete(children[0])
             tree.yview_moveto(1)
         except Exception as e:
-            print("\n[DEBUG] Error in _safe_insert:")
-            traceback.print_exc()
+            pass
 
     def clear_logs(self):
         for item in self.table_auto.get_children():
@@ -424,8 +420,7 @@ class FacebookAutomationGUI(ctk.CTk):
             if "http" in url:
                 webbrowser.open(url)
         except Exception as e:
-            print("\n[DEBUG] Error in on_log_double_click:")
-            traceback.print_exc()
+            pass
 
     def on_close(self):
         self.stop_automation()
@@ -446,8 +441,7 @@ class FacebookAutomationGUI(ctk.CTk):
                 self.global_cookie_path = d.get("global_cookie_path", "")
                 self.after(500, lambda: self._set_vals(d))
         except Exception as e:
-            print("\n[DEBUG] Error loading settings (might be first run):")
-            traceback.print_exc()
+            pass
 
     def _set_vals(self, d):
         try:
@@ -459,8 +453,7 @@ class FacebookAutomationGUI(ctk.CTk):
                 self.cookie_entry.delete(0, "end")
                 self.cookie_entry.insert(0, d.get("global_cookie_path", ""))
         except Exception as e:
-            print("\n[DEBUG] Error setting values:")
-            traceback.print_exc()
+            pass
 
     def save_config(self):
         self.global_cookie_path = self.cookie_entry.get()
@@ -510,43 +503,18 @@ class FacebookAutomationGUI(ctk.CTk):
         try:
             pre_wait = float(self.dash_pre_delay.get())
         except Exception as e:
-            print("\n[DEBUG] Error parsing dash_pre_delay, defaulting to 5.0:")
-            traceback.print_exc()
             pre_wait = 5.0
 
         limit = 0
         processed = 0
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=
-                [
-                    "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
-                    "--disable-notifications",
-                    "--no-sandbox",
-                    "--mute-audio",
-                    "--disable-popup-blocking",
-                    "--disable-infobars",
-                    "--disable-dev-shm-usage",
-                    "--disable-extensions",
-                    "--ignore-certificate-errors",
-                    "--renderer-process-limit=1",
-                    "--single-process",
-                    "--disable-background-networking",
-                    "--disable-sync",
-                    "--disable-translate",
-                    "--disk-cache-size=1",
-                    "--media-cache-size=1"
-                ]
-            )
-            self.active_browsers.append(browser)
-
             while self.is_running:
                 if limit > 0 and processed >= limit:
                     self.log_row(worker_id, "---", "---", "⛔ LIMIT REACHED", "WARN")
                     break
 
+                # KUHAIN ANG ACCOUNT / COOKIE DATA
                 try:
                     data = self.cookie_queue.get(timeout=2)
                     cookie_str = data['cookie']
@@ -557,124 +525,173 @@ class FacebookAutomationGUI(ctk.CTk):
                     continue
 
                 processed += 1
+                browser = None
                 context = None
 
+                link_idx = 0
+                total_links = len(self.job_list_global)
+                link_retries = 0
+                max_retries = 3
+
                 try:
-                    context = browser.new_context(
-                        viewport={'width': 360, 'height': 640},
-                        user_agent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
-                    )
-                    page = context.new_page()
-
-                    cookies = self.parse_playwright_cookies(cookie_str)
-                    if cookies:
-                        context.add_cookies(cookies)
-
-                    for ln, (link, cap_file) in enumerate(self.job_list_global, 1):
-                        if not self.is_running:
-                            break
+                    while link_idx < total_links and self.is_running:
+                        ln = link_idx + 1
+                        link, cap_file = self.job_list_global[link_idx]
                         sel_cap = "---"
-                        success = False
 
-                        for attempt in range(2):
-                            if not self.is_running:
-                                break
-                            try:
-                                client = context.new_cdp_session(page)
-                                client.send("Network.setUserAgentOverride", {
-                                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                                    "platform": "Win32",
-                                    "acceptLanguage": "en-US,en;q=0.9"
-                                })
-                                blocked_urls = [
-                                    "*.jpg", "*.jpeg", "*.png", "*.gif",
-                                    "*.css",
-                                    "*.mp4", "*.avi",
-                                    "*.woff", "*.woff2", "*.ttf",
-                                    "*.ico",
-                                    "*favicon*",
-                                ]
-                                client.send("Network.enable")
-                                client.send("Network.setBlockedURLs", {"urls": blocked_urls})
-
-                                page.goto(f"https://www.facebook.com/sharer/sharer.php?u={link}", timeout=90 * 1000)
-                                dialog_xpath = "xpath=//*[@aria-label='Close composer dialog']"
-                                dialog_locator = page.locator(dialog_xpath).first
-
-                                try:
-                                    dialog_locator.wait_for(state="visible", timeout=30000)
-                                except PlaywrightTimeoutError:
-                                    self.log_row(worker_id, link, "---", f"EXPIRED COOKIE Account {acc_idx} LINK {ln}",
-                                                 "ERROR")
-                                    success = False
-                                    break
-
-                                if cap_file and os.path.exists(cap_file):
+                        try:
+                            # 1. BROWSER CHECK & RELAUNCH LOGIC
+                            # Kung wala pa browser o namatay (TargetClosed/Crash), gawa tayo bago.
+                            if browser is None or not browser.is_connected():
+                                if browser:
                                     try:
-                                        with open(cap_file, "r", encoding="utf-8") as f:
-                                            lines = [x.strip() for x in f if x.strip()]
-                                        if lines:
-                                            sel_cap = random.choice(lines)
-                                            page.keyboard.type(sel_cap)
-                                            time.sleep(pre_wait)
-                                    except Exception as e:
-                                        print(f"\n[DEBUG] Error reading caption file {cap_file}:")
-                                        traceback.print_exc()
+                                        if browser in self.active_browsers:
+                                            self.active_browsers.remove(browser)
+                                        browser.close()
+                                    except:
+                                        pass
 
-                                post_xpath = "xpath=//*[@aria-label='Share']"
-                                post_btn = page.locator(post_xpath).first
-                                post_btn.scroll_into_view_if_needed()
-                                post_btn.click()
+                                browser = p.chromium.launch(
+                                    headless=False,
+                                    args=[
+                                        "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
+                                        "--disable-notifications",
+                                        "--no-sandbox",
+                                        "--mute-audio",
+                                        "--disable-popup-blocking",
+                                        "--disable-infobars",
+                                        "--disable-dev-shm-usage",
+                                        "--disable-extensions",
+                                        "--ignore-certificate-errors",
+                                        "--renderer-process-limit=1",
+                                        "--single-process",
+                                        "--disable-background-networking",
+                                        "--disable-sync",
+                                        "--disable-translate",
+                                        "--disk-cache-size=1",
+                                        "--media-cache-size=1"
+                                    ]
+                                )
+                                self.active_browsers.append(browser)
+                                context = None  # Reset context pag bago ang browser
 
+                            # 2. CONTEXT & PAGE CREATION
+                            if context is None:
+                                context = browser.new_context(
+                                    viewport={'width': 360, 'height': 640},
+                                    user_agent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+                                )
+                                cookies = self.parse_playwright_cookies(cookie_str)
+                                if cookies:
+                                    context.add_cookies(cookies)
+                                page = context.new_page()
+
+                            # 3. NORMAL SHARING AUTOMATION
+                            client = context.new_cdp_session(page)
+                            client.send("Network.setUserAgentOverride", {
+                                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                "platform": "Win32",
+                                "acceptLanguage": "en-US,en;q=0.9"
+                            })
+                            blocked_urls = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.css", "*.mp4", "*.avi", "*.woff",
+                                            "*.woff2", "*.ttf", "*.ico", "*favicon*"]
+                            client.send("Network.enable")
+                            client.send("Network.setBlockedURLs", {"urls": blocked_urls})
+
+                            page.goto(f"https://www.facebook.com/sharer/sharer.php?u={link}", timeout=90 * 1000)
+                            dialog_xpath = "xpath=//*[@aria-label='Close composer dialog']"
+                            dialog_locator = page.locator(dialog_xpath).first
+
+                            try:
+                                dialog_locator.wait_for(state="visible", timeout=30000)
+                            except PlaywrightTimeoutError:
+                                self.log_row(worker_id, link, "---", f"TIMEOUT/EXPIRED Account {acc_idx} LINK {ln}",
+                                             "ERROR")
+                                link_idx += 1
+                                link_retries = 0
+                                continue
+
+                            if cap_file and os.path.exists(cap_file):
                                 try:
-                                    post_btn.wait_for(state="detached", timeout=30000)
-                                    self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}",
-                                                 "SUCCESS")
-                                    self.total_shares += 1
-                                    self.total_attempts += 1
-                                    self.update_stats()
-                                    success = True
-                                    break
+                                    with open(cap_file, "r", encoding="utf-8") as f:
+                                        lines = [x.strip() for x in f if x.strip()]
+                                    if lines:
+                                        sel_cap = random.choice(lines)
+                                        page.keyboard.type(sel_cap)
+                                        time.sleep(pre_wait)
                                 except Exception as e:
-                                    print("\n[DEBUG] post_btn wait error (detached):")
-                                    traceback.print_exc()
+                                    pass
 
-                            except Exception as e:
-                                print(f"\n[DEBUG] Main try block error during sharing (Attempt {attempt + 1}):")
-                                traceback.print_exc()
-                                try:
-                                    page.reload()
-                                except Exception as reload_e:
-                                    print("\n[DEBUG] Error reloading page:")
-                                    traceback.print_exc()
+                            post_xpath = "xpath=//*[@aria-label='Share']"
+                            post_btn = page.locator(post_xpath).first
+                            post_btn.scroll_into_view_if_needed()
+                            post_btn.click()
 
-                        if not success:
+                            post_btn.wait_for(state="detached", timeout=30000)
+
+                            self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}", "SUCCESS")
+                            self.total_shares += 1
                             self.total_attempts += 1
                             self.update_stats()
-                            break
 
-                    if context:
-                        context.close()
+                        except Exception as e:
+                            err_str = str(e).replace('\n', ' ')
+                            traceback.print_exc()
+
+                            # KAPAG NAGKA-CRASH O NA-CLOSE ANG BROWSER / PAGE
+                            if "Target page, context or browser has been closed" in err_str or "TargetClosedError" in err_str or "closed" in err_str.lower() or "not connected" in err_str.lower():
+                                link_retries += 1
+                                if link_retries <= max_retries:
+                                    self.log_row(worker_id, link, sel_cap,
+                                                 f"RECOVERING ACC {acc_idx} LINK {ln} (Try {link_retries})...", "WARN")
+                                    # Linisin ang sirang context para magawa ulit. 
+                                    # HINDI natin i-a-add ang link_idx kaya uulitin niya kung saan huminto!
+                                    if context:
+                                        try:
+                                            context.close()
+                                        except:
+                                            pass
+                                    context = None
+                                    time.sleep(2)
+                                    continue
+                                else:
+                                    self.log_row(worker_id, link, sel_cap,
+                                                 f"SKIP LINK: Failed after {max_retries} recoveries", "ERROR")
+                            else:
+                                self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
+
+                            self.error_count += 1
+                            self.total_attempts += 1
+                            self.update_stats()
+
+                        # Move to next link pag tapos na o kung sumuko na sa kakarecover
+                        link_idx += 1
+                        link_retries = 0
+
                 except Exception as e:
-                    print("\n[DEBUG] Context/Worker Crash:")
+                    self.log_row(worker_id, "---", "---", f"FATAL WORKER ERR: {str(e)[:30]}", "ERROR")
                     traceback.print_exc()
-                    self.log_row(worker_id, "---", "---", f"CRASH: {str(e)[:30]}", "ERROR")
+                finally:
+                    # Isasara natin ang browser at context tuwing matatapos ang ISANG ACCOUNT
+                    # Para laging fresh memory sa pagpasok ng next cookie.
                     if context:
                         try:
                             context.close()
-                        except Exception as e2:
+                        except:
                             pass
-                finally:
+                    if browser:
+                        try:
+                            if browser in self.active_browsers:
+                                self.active_browsers.remove(browser)
+                            browser.close()
+                        except:
+                            pass
+
                     if self.is_running:
                         try:
                             self.cookie_queue.task_done()
-                        except Exception as e:
-                            print("\n[DEBUG] Error in task_done:")
-                            traceback.print_exc()
-
-            if browser in self.active_browsers:
-                self.active_browsers.remove(browser)
-            browser.close()
+                        except:
+                            pass
 
         self.active_worker_count -= 1
         self.after(0, lambda: self.update_active_threads_ui(self.active_worker_count))
@@ -701,7 +718,6 @@ class FacebookAutomationGUI(ctk.CTk):
             if not ac:
                 raise Exception("Cookie list is empty")
         except Exception as e:
-            print("\n[DEBUG] Error loading cookies:")
             traceback.print_exc()
             messagebox.showerror("Error", "Cookie file empty/error!")
             return
@@ -768,7 +784,6 @@ class FacebookAutomationGUI(ctk.CTk):
                 try:
                     b.close()
                 except Exception as e:
-                    print("\n[DEBUG] Error closing browser during stop:")
                     traceback.print_exc()
             self.active_browsers = []
             self.after(0, lambda: messagebox.showinfo("Stopped", "Automation Force Stopped."))
