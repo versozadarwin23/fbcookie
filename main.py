@@ -176,6 +176,7 @@ class FacebookAutomationGUI(ctk.CTk):
     def show_update_popup(self, remote_version):
         msg = f"A new update is available! (Version V{remote_version})\n\nWould you like to download and install the update now?"
         response = messagebox.askyesno("Update Available", msg)
+
         if response:
             try:
                 req = urllib.request.Request(UPDATE_URL, headers={'Cache-Control': 'no-cache'})
@@ -193,6 +194,9 @@ class FacebookAutomationGUI(ctk.CTk):
 
             except Exception as e:
                 messagebox.showerror("Update Failed", f"An error occurred while updating:\n{e}")
+                self.after(120000, self.check_for_updates)
+        else:
+            self.after(120000, self.check_for_updates)
 
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
@@ -279,7 +283,11 @@ class FacebookAutomationGUI(ctk.CTk):
         ctk.CTkButton(control_frame, text="💾 Save Configuration", height=30, fg_color=COLORS["bg_card"],
                       border_width=1, border_color=COLORS["primary"], font=FONT_BODY,
                       command=self.save_config).pack(fill="x", padx=12, pady=(5, 5))
-
+        ctk.CTkButton(control_frame, text="🔄 Check for Updates", height=30,
+                      fg_color=COLORS["bg_card"], border_width=1,
+                      border_color=COLORS["warning"], text_color=COLORS["warning"],
+                      font=FONT_BODY, hover_color="#3D3014",
+                      command=lambda: self.check_for_updates(manual=True)).pack(fill="x", padx=12, pady=(0, 15))
         right_panel = ctk.CTkFrame(self.tab_dash, fg_color=COLORS["bg_card"], corner_radius=10)
         right_panel.grid(row=0, column=1, sticky="nsew")
         header = ctk.CTkFrame(right_panel, fg_color="transparent")
