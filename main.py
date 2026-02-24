@@ -15,7 +15,7 @@ from datetime import datetime
 import hashlib
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "6"
+__version__ = "7"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -492,9 +492,11 @@ class FacebookAutomationGUI(ctk.CTk):
             pre_wait = float(self.dash_pre_delay.get())
         except Exception as e:
             pre_wait = 5.0
+
         is_fast_mode = self.fast_mode_var.get()
         limit = 0
         processed = 0
+
         with sync_playwright() as p:
             while self.is_running:
                 if limit > 0 and processed >= limit:
@@ -531,10 +533,9 @@ class FacebookAutomationGUI(ctk.CTk):
                 processed += 1
                 browser = None
                 context = None
+
                 link_idx = 0
                 total_links = len(pending_jobs)
-                link_retries = 0
-                max_retries = 2
 
                 try:
                     while link_idx < total_links and self.is_running:
@@ -575,6 +576,7 @@ class FacebookAutomationGUI(ctk.CTk):
                                 )
                                 self.active_browsers.append(browser)
                                 context = None
+
                             if context is None:
                                 context = browser.new_context(
                                     viewport={'width': 360, 'height': 640},
@@ -584,12 +586,14 @@ class FacebookAutomationGUI(ctk.CTk):
                                 if cookies:
                                     context.add_cookies(cookies)
                                 page = context.new_page()
+
                             client = context.new_cdp_session(page)
                             client.send("Network.setUserAgentOverride", {
                                 "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                                 "platform": "Win32",
                                 "acceptLanguage": "en-US,en;q=0.9"
                             })
+
                             if is_fast_mode:
                                 blocked_urls = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.css", "*.mp4", "*.avi",
                                                 "*.woff", "*.woff2", "*.ttf", "*.ico", "*favicon*"]
@@ -599,6 +603,7 @@ class FacebookAutomationGUI(ctk.CTk):
                             page.goto(f"https://www.facebook.com/sharer/sharer.php?u={link}", timeout=90 * 1000)
                             dialog_xpath = "xpath=//*[@aria-label='Close composer dialog']"
                             dialog_locator = page.locator(dialog_xpath).first
+
                             try:
                                 dialog_locator.wait_for(state="visible", timeout=30000)
                             except PlaywrightTimeoutError:
@@ -616,7 +621,8 @@ class FacebookAutomationGUI(ctk.CTk):
                                 except:
                                     pass
 
-                            post_btn = page.get_by_role("button", name="Share", exact=True).or_(page.get_by_role("button", name="Next", exact=True)).first
+                            post_btn = page.get_by_role("button", name="Share", exact=True).or_(
+                                page.get_by_role("button", name="Next", exact=True)).first
                             post_btn.click()
                             post_btn.wait_for(state="detached", timeout=30000)
 
@@ -636,29 +642,15 @@ class FacebookAutomationGUI(ctk.CTk):
                         except Exception as e:
                             err_str = str(e).replace('\n', ' ')
                             traceback.print_exc()
-                            if "Target page, context or browser has been closed" in err_str or "TargetClosedError" in err_str or "closed" in err_str.lower() or "not connected" in err_str.lower():
-                                link_retries += 1
-                                if link_retries <= max_retries:
-                                    self.log_row(worker_id, link, sel_cap,
-                                                 f"RECOVERING ACC {acc_idx} LINK {ln} (Try {link_retries})...", "WARN")
-                                    if context:
-                                        try:
-                                            context.close()
-                                        except:
-                                            pass
-                                    context = None
-                                    time.sleep(2)
-                                    continue
-                                else:
-                                    self.log_row(worker_id, link, sel_cap,
-                                                 f"SKIP LINK: Failed after {max_retries} recoveries", "ERROR")
-                            else:
-                                self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
+
+                            # Tinanggal na natin ang retry logic dito. Mag-lolog na lang ito ng error at didiretso sa next link.
+                            self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
                             self.error_count += 1
                             self.total_attempts += 1
                             self.update_stats()
+
                         link_idx += 1
-                        link_retries = 0
+
                 except Exception as e:
                     self.log_row(worker_id, "---", "---", f"FATAL WORKER ERR: {str(e)[:30]}", "ERROR")
                     traceback.print_exc()
@@ -680,6 +672,7 @@ class FacebookAutomationGUI(ctk.CTk):
                             self.cookie_queue.task_done()
                         except:
                             pass
+
         self.active_worker_count -= 1
         self.after(0, lambda: self.update_active_threads_ui(self.active_worker_count))
 
