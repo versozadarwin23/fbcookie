@@ -15,7 +15,7 @@ from datetime import datetime
 import hashlib
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "8"
+__version__ = "9"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -230,9 +230,9 @@ class FacebookAutomationGUI(ctk.CTk):
                 os.execl(sys.executable, sys.executable, *sys.argv)
             except Exception as e:
                 messagebox.showerror("Update Failed", f"An error occurred while updating:\n{e}")
-                self.after(120000, self.check_for_updates)
+                self.after(6000, self.check_for_updates)
         else:
-            self.after(120000, self.check_for_updates)
+            self.after(6000, self.check_for_updates)
 
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
