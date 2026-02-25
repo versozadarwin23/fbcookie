@@ -11,11 +11,13 @@ import queue
 import urllib.request
 import webbrowser
 import traceback
+import shutil
 from datetime import datetime
 import hashlib
+
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "9"
+__version__ = "10"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -63,20 +65,15 @@ class StatsFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         title = ctk.CTkLabel(self, text="📊 LIVE ANALYTICS", font=FONT_SUBHEADER, text_color=COLORS["primary"])
         title.pack(anchor="w", pady=(0, 10))
-
         self.grid_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.grid_frame.pack(fill="both", expand=True)
         self.grid_frame.grid_columnconfigure((0, 1), weight=1)
-
         self.card_shares = StatCard(self.grid_frame, "Total Shares", "0", "🚀", COLORS["success"])
         self.card_shares.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
-
         self.card_failed = StatCard(self.grid_frame, "Failed", "0", "⚠️", COLORS["danger"])
         self.card_failed.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
-
         self.card_cookies = StatCard(self.grid_frame, "Total Cookies", "0", "🍪", COLORS["primary"])
         self.card_cookies.grid(row=1, column=0, padx=(0, 5), pady=(5, 5), sticky="ew")
-
         self.card_devices = StatCard(self.grid_frame, "Active Threads", "0", "💻", COLORS["warning"])
         self.card_devices.grid(row=1, column=1, padx=(5, 0), pady=(5, 5), sticky="ew")
 
@@ -149,19 +146,24 @@ class FacebookAutomationGUI(ctk.CTk):
         self.worker_threads = []
         self.active_worker_count = 0
         self.pair_widgets = []
+
+        # Counters
         self.total_shares = 0
         self.error_count = 0
         self.total_attempts = 0
         self.job_list_global = []
         self.fast_mode_var = ctk.BooleanVar(value=True)
         self.history_file = "share_history.json"
-        self.history_lock = threading.Lock()
 
+        # Locks for thread-safe updates
+        self.history_lock = threading.Lock()
         self.progress_lock = threading.Lock()
+        self.stats_lock = threading.Lock()
+
         self.accounts_processed = 0
         self.total_accounts_to_process = 0
-
         self.share_history = self.load_share_history()
+
         self.layout_ui()
         self.load_settings()
         self.check_for_updates()
@@ -234,6 +236,10 @@ class FacebookAutomationGUI(ctk.CTk):
         else:
             self.after(6000, self.check_for_updates)
 
+    def on_tab_change(self):
+        if self.tabview.get() == "   Saved Profiles   ":
+            self.populate_saved_profiles()
+
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -252,12 +258,15 @@ class FacebookAutomationGUI(ctk.CTk):
                                       segmented_button_selected_color=COLORS["primary"],
                                       segmented_button_selected_hover_color="#2563EB",
                                       segmented_button_unselected_color=COLORS["bg_card"],
-                                      segmented_button_unselected_hover_color=COLORS["bg_lighter"])
+                                      segmented_button_unselected_hover_color=COLORS["bg_lighter"],
+                                      command=self.on_tab_change)
         self.tabview.grid(row=0, column=0, sticky="nsew")
         self.tab_dash = self.tabview.add("   Dashboard   ")
         self.tab_logs = self.tabview.add("   System Logs   ")
+        self.tab_saved = self.tabview.add("   Saved Profiles   ")
         self.setup_dashboard()
         self.setup_logs()
+        self.setup_saved_profiles()
 
     def setup_dashboard(self):
         self.tab_dash.grid_columnconfigure(1, weight=1)
@@ -266,11 +275,13 @@ class FacebookAutomationGUI(ctk.CTk):
         left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         self.overall_stats = StatsFrame(left_panel)
         self.overall_stats.pack(fill="x", pady=(0, 15))
+
         control_frame = ctk.CTkFrame(left_panel, fg_color=COLORS["bg_card"], corner_radius=15, border_width=1,
                                      border_color=COLORS["border"])
         control_frame.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(control_frame, text="⚙️ ACTIONS", font=("Roboto", 12, "bold"),
                      text_color=COLORS["text_main"]).pack(anchor="w", padx=15, pady=(15, 10))
+
         lbl_cookies = ctk.CTkLabel(control_frame, text="Cookie File Path:", font=("Roboto", 11, "bold"),
                                    text_color=COLORS["text_sub"])
         lbl_cookies.pack(anchor="w", padx=15, pady=(5, 0))
@@ -283,10 +294,12 @@ class FacebookAutomationGUI(ctk.CTk):
                                    hover_color=COLORS["primary"], border_width=1, border_color=COLORS["border"],
                                    corner_radius=8, command=self.browse_global_cookie)
         btn_browse.pack(side="right")
+
         self.fast_mode_switch = ctk.CTkSwitch(control_frame, text="⚡ Fast Mode",
                                               variable=self.fast_mode_var, font=("Roboto", 12, "bold"),
                                               text_color=COLORS["warning"])
         self.fast_mode_switch.pack(anchor="w", padx=15, pady=(5, 10))
+
         btn_grid = ctk.CTkFrame(control_frame, fg_color="transparent")
         btn_grid.pack(fill="x", padx=15, pady=5)
         self.start_btn = ctk.CTkButton(btn_grid, text="▶ START", height=45, fg_color=COLORS["success"],
@@ -298,6 +311,7 @@ class FacebookAutomationGUI(ctk.CTk):
                                       corner_radius=8,
                                       command=self.stop_automation)
         self.stop_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+
         lbl_delay = ctk.CTkLabel(control_frame, text="Pre/Post Action Delay (s)", font=("Roboto", 11, "bold"),
                                  text_color=COLORS["text_sub"])
         lbl_delay.pack(anchor="w", padx=15, pady=(10, 0))
@@ -310,16 +324,22 @@ class FacebookAutomationGUI(ctk.CTk):
         self.dash_post_delay = ctk.CTkEntry(delay_row, width=70, height=32, justify="center", corner_radius=8)
         self.dash_post_delay.pack(side="left", padx=(5, 0))
         self.dash_post_delay.insert(0, "10")
+
         ctk.CTkButton(control_frame, text="💾 Save Configuration", height=35, fg_color="transparent",
                       border_width=1, border_color=COLORS["primary"], text_color=COLORS["primary"], font=FONT_BODY,
-                      corner_radius=8,
-                      hover_color=COLORS["bg_lighter"],
+                      corner_radius=8, hover_color=COLORS["bg_lighter"],
                       command=self.save_config).pack(fill="x", padx=15, pady=(5, 5))
+
         ctk.CTkButton(control_frame, text="🔄 Check for Updates", height=35, fg_color="transparent",
                       border_width=1, border_color=COLORS["warning"], text_color=COLORS["warning"], font=FONT_BODY,
-                      corner_radius=8,
-                      hover_color=COLORS["bg_lighter"],
-                      command=lambda: self.check_for_updates(manual=True)).pack(fill="x", padx=15, pady=(5, 20))
+                      corner_radius=8, hover_color=COLORS["bg_lighter"],
+                      command=lambda: self.check_for_updates(manual=True)).pack(fill="x", padx=15, pady=(5, 5))
+
+        ctk.CTkButton(control_frame, text="🗑 Clear Share History", height=35, fg_color="transparent",
+                      border_width=1, border_color=COLORS["danger"], text_color=COLORS["danger"], font=FONT_BODY,
+                      corner_radius=8, hover_color=COLORS["bg_lighter"],
+                      command=self.clear_share_history).pack(fill="x", padx=15, pady=(5, 20))
+
         right_panel = ctk.CTkFrame(self.tab_dash, fg_color="transparent")
         right_panel.grid(row=0, column=1, sticky="nsew")
         header = ctk.CTkFrame(right_panel, fg_color="transparent")
@@ -332,26 +352,34 @@ class FacebookAutomationGUI(ctk.CTk):
         self.pairs_scroll.pack(fill="both", expand=True, padx=0, pady=5)
         self.add_pair()
 
+    def clear_share_history(self):
+        ans = messagebox.askyesno("Clear History",
+                                  "Clear share history? This will allow processed accounts to share the same links again.")
+        if ans:
+            with self.history_lock:
+                self.share_history = {}
+                try:
+                    if os.path.exists(self.history_file):
+                        os.remove(self.history_file)
+                except Exception as e:
+                    pass
+            messagebox.showinfo("Success", "Share history cleared successfully!")
+
     def setup_logs(self):
         self.tab_logs.grid_columnconfigure(0, weight=1)
         self.tab_logs.grid_rowconfigure(2, weight=1)
-
         top_bar = ctk.CTkFrame(self.tab_logs, fg_color="transparent", height=40)
         top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5))
         ctk.CTkLabel(top_bar, text="VIEWING LOGS:", font=FONT_SUBHEADER).pack(side="left", padx=(0, 10))
-
         self.log_shares_label = ctk.CTkLabel(top_bar, text="✅ SHARES: 0", font=("Roboto", 13, "bold"),
                                              text_color=COLORS["success"])
         self.log_shares_label.pack(side="left", padx=(0, 15))
-
         self.log_failed_label = ctk.CTkLabel(top_bar, text="⚠️ FAILED: 0", font=("Roboto", 13, "bold"),
                                              text_color=COLORS["danger"])
         self.log_failed_label.pack(side="left", padx=(0, 15))
-
         self.log_cookies_label = ctk.CTkLabel(top_bar, text="🍪 COOKIES: 0", font=("Roboto", 13, "bold"),
                                               text_color=COLORS["primary"])
         self.log_cookies_label.pack(side="left", padx=(0, 15))
-
         self.log_threads_label = ctk.CTkLabel(top_bar, text="💻 ACTIVE THREADS: 0", font=("Roboto", 13, "bold"),
                                               text_color=COLORS["warning"])
         self.log_threads_label.pack(side="left", padx=(0, 15))
@@ -362,19 +390,15 @@ class FacebookAutomationGUI(ctk.CTk):
         ctk.CTkButton(top_bar, text="🗑 Clear", width=90, height=32, fg_color="transparent", border_width=1,
                       border_color=COLORS["border"], hover_color=COLORS["bg_lighter"], corner_radius=8,
                       command=self.clear_logs).pack(side="right", padx=(0, 10))
-
         progress_frame = ctk.CTkFrame(self.tab_logs, fg_color="transparent")
         progress_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-
         self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0 / 0 Accounts", font=("Roboto", 12, "bold"),
                                            text_color=COLORS["text_sub"])
         self.progress_label.pack(side="left", padx=(0, 15))
-
         self.progress_bar = ctk.CTkProgressBar(progress_frame, fg_color=COLORS["bg_card"],
                                                progress_color=COLORS["primary"], height=12)
         self.progress_bar.pack(side="left", fill="x", expand=True)
         self.progress_bar.set(0)
-
         logs_container = ctk.CTkFrame(self.tab_logs, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                                       border_color=COLORS["border"])
         logs_container.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
@@ -410,6 +434,130 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.tag_configure("WARN", foreground=COLORS["warning"])
         self.table_auto.bind("<Double-1>", self.on_log_double_click)
 
+    def setup_saved_profiles(self):
+        self.tab_saved.grid_columnconfigure(0, weight=1)
+        self.tab_saved.grid_rowconfigure(1, weight=1)
+        top_bar = ctk.CTkFrame(self.tab_saved, fg_color="transparent", height=40)
+        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5))
+        ctk.CTkLabel(top_bar, text="📁 SAVED SESSIONS", font=FONT_SUBHEADER).pack(side="left", padx=(0, 10))
+
+        # Total Saved Sessions Label
+        self.lbl_total_saved = ctk.CTkLabel(top_bar, text="Total: 0", font=("Roboto", 13, "bold"),
+                                            text_color=COLORS["success"])
+        self.lbl_total_saved.pack(side="left", padx=(10, 0))
+
+        ctk.CTkButton(top_bar, text="🔄 Refresh List", width=120, height=32, corner_radius=8,
+                      command=self.populate_saved_profiles).pack(side="right", padx=(0, 5))
+
+        ctk.CTkButton(top_bar, text="🗑 Delete All", width=100, height=32, fg_color=COLORS["danger"],
+                      hover_color="#B91C1C", corner_radius=8,
+                      command=self.delete_all_profiles).pack(side="right", padx=(0, 10))
+
+        ctk.CTkButton(top_bar, text="📋 Copy All", width=100, height=32, fg_color=COLORS["success"],
+                      hover_color="#059669", corner_radius=8,
+                      command=self.copy_all_profiles).pack(side="right", padx=(0, 10))
+
+        self.profiles_scroll = ctk.CTkScrollableFrame(self.tab_saved, fg_color=COLORS["bg_main"])
+        self.profiles_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        self.populate_saved_profiles()
+
+    def populate_saved_profiles(self):
+        for widget in self.profiles_scroll.winfo_children():
+            widget.destroy()
+        profiles_dir = os.path.join(os.getcwd(), "profiles")
+
+        count = 0
+        if os.path.exists(profiles_dir):
+            uids = [d for d in os.listdir(profiles_dir) if os.path.isdir(os.path.join(profiles_dir, d))]
+            count = len(uids)
+            if not uids:
+                ctk.CTkLabel(self.profiles_scroll, text="No saved profiles or cookies yet.", font=FONT_BODY,
+                             text_color=COLORS["text_sub"]).pack(pady=30)
+            else:
+                for i, uid in enumerate(uids):
+                    self.create_profile_row(i + 1, uid)
+        else:
+            ctk.CTkLabel(self.profiles_scroll, text="No saved profiles or cookies yet.", font=FONT_BODY,
+                         text_color=COLORS["text_sub"]).pack(pady=30)
+
+        # Update Total Label
+        if hasattr(self, 'lbl_total_saved'):
+            self.lbl_total_saved.configure(text=f"Total: {count}")
+
+    def create_profile_row(self, index, uid):
+        row = ctk.CTkFrame(self.profiles_scroll, fg_color=COLORS["bg_card"], corner_radius=8, border_width=1,
+                           border_color=COLORS["border"])
+        row.pack(fill="x", pady=5, padx=5)
+        lbl_idx = ctk.CTkLabel(row, text=f"{index}.", width=30, font=("Roboto", 13, "bold"),
+                               text_color=COLORS["text_sub"])
+        lbl_idx.pack(side="left", padx=(10, 5), pady=10)
+        fb_link = f"https://www.facebook.com/{uid}"
+        lbl_link = ctk.CTkLabel(row, text=fb_link, font=("Roboto", 13, "underline"), text_color=COLORS["primary"],
+                                cursor="hand2")
+        lbl_link.pack(side="left", padx=10, pady=10)
+        lbl_link.bind("<Double-1>", lambda e, url=fb_link: webbrowser.open(url))
+        ctk.CTkLabel(row, text="(Double-click to open)", font=("Roboto", 10, "italic"),
+                     text_color=COLORS["text_sub"]).pack(side="left", padx=(0, 10))
+        btn_copy = ctk.CTkButton(row, text="📋 Copy URL", width=90, height=28, fg_color=COLORS["bg_lighter"],
+                                 hover_color=COLORS["primary"], corner_radius=6, text_color=COLORS["text_main"],
+                                 command=lambda u=fb_link: self.copy_to_clipboard(u))
+        btn_copy.pack(side="right", padx=(5, 10), pady=10)
+        btn_del = ctk.CTkButton(row, text="🗑 Delete Data", width=90, height=28, fg_color="transparent", border_width=1,
+                                border_color=COLORS["danger"],
+                                text_color=COLORS["danger"], hover_color=COLORS["danger"], corner_radius=6,
+                                command=lambda r=row, u=uid: self.delete_profile(r, u))
+        btn_del.pack(side="right", padx=5, pady=10)
+
+    def copy_to_clipboard(self, text):
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.update()
+
+    def copy_all_profiles(self):
+        profiles_dir = os.path.join(os.getcwd(), "profiles")
+        if not os.path.exists(profiles_dir):
+            messagebox.showinfo("Info", "No saved profiles to copy.")
+            return
+        uids = [d for d in os.listdir(profiles_dir) if os.path.isdir(os.path.join(profiles_dir, d))]
+        if not uids:
+            messagebox.showinfo("Info", "No saved profiles to copy.")
+            return
+        links = [f"https://www.facebook.com/{uid}" for uid in uids]
+        all_links_str = "\n".join(links)
+        self.clipboard_clear()
+        self.clipboard_append(all_links_str)
+        self.update()
+        messagebox.showinfo("Copied", f"Copied {len(links)} links to clipboard!")
+
+    def delete_profile(self, row_widget, uid):
+        prof_path = os.path.join(os.getcwd(), "profiles", uid)
+        try:
+            if os.path.exists(prof_path):
+                shutil.rmtree(prof_path)
+            row_widget.destroy()
+            self.overall_stats.update_cookies(max(0, int(self.overall_stats.card_cookies.value_var.get()) - 1))
+
+            # Subtract 1 from the total label
+            current_text = self.lbl_total_saved.cget("text")
+            current_count = int(current_text.split(": ")[1])
+            self.lbl_total_saved.configure(text=f"Total: {max(0, current_count - 1)}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Cannot delete the profile folder:\n{e}")
+
+    def delete_all_profiles(self):
+        response = messagebox.askyesno("Delete All", "Are you sure you want to delete ALL saved profiles?")
+        if response:
+            profiles_dir = os.path.join(os.getcwd(), "profiles")
+            if os.path.exists(profiles_dir):
+                try:
+                    shutil.rmtree(profiles_dir)
+                    os.makedirs(profiles_dir, exist_ok=True)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error deleting some folders:\n{e}")
+            self.populate_saved_profiles()
+            self.overall_stats.update_cookies(0)
+
     def update_progress_ui(self, processed, total):
         if total > 0:
             val = processed / total
@@ -419,7 +567,6 @@ class FacebookAutomationGUI(ctk.CTk):
             self.progress_bar.set(0)
             self.progress_label.configure(text="Progress: 0 / 0 Accounts")
 
-    # [FIXED] Pasa ang orig na link patungo sa _safe_insert
     def log_row(self, worker_id, link, caption, status, level="INFO"):
         ts = datetime.now().strftime("%I:%M:%S %p")
         d_name = worker_id
@@ -429,7 +576,6 @@ class FacebookAutomationGUI(ctk.CTk):
         self.after(10, lambda: self._safe_insert(self.table_auto, (ts, d_name, disp_link, disp_cap, status), level,
                                                  full_link=link))
 
-    # [FIXED] Itatago ang full_link sa invisible na "text" parameter ng row
     def _safe_insert(self, tree, values, tag, full_link=""):
         try:
             tree.insert("", "end", text=full_link, values=values, tags=(tag,))
@@ -444,19 +590,13 @@ class FacebookAutomationGUI(ctk.CTk):
         for item in self.table_auto.get_children():
             self.table_auto.delete(item)
 
-    # [FIXED] Kukunin ngayon ang nakatagong buong link sa halip na ang display text lang
     def on_log_double_click(self, event):
         try:
             tree = event.widget
             item = tree.item(tree.identify_row(event.y))
-
-            # Kukunin yung full link mula sa 'text' property na hindi nakikita sa UI
             url = item.get('text', '')
-
-            # Fallback (kung sakaling walang text, gamitin parin ang values)
             if not url:
                 url = item['values'][2]
-
             if "http" in url:
                 webbrowser.open(url)
         except Exception as e:
@@ -506,9 +646,7 @@ class FacebookAutomationGUI(ctk.CTk):
             if hasattr(self, 'cookie_entry'):
                 self.cookie_entry.delete(0, "end")
                 self.cookie_entry.insert(0, cookie_path)
-
             self._count_and_update_cookies(cookie_path)
-
         except Exception as e:
             pass
 
@@ -539,6 +677,7 @@ class FacebookAutomationGUI(ctk.CTk):
 
     def parse_playwright_cookies(self, cookie_str):
         cookies = []
+        expires_time = int(time.time()) + (365 * 24 * 60 * 60)
         for pair in cookie_str.split(";"):
             if "=" in pair:
                 name, value = pair.strip().split("=", 1)
@@ -546,7 +685,8 @@ class FacebookAutomationGUI(ctk.CTk):
                     "name": name,
                     "value": value,
                     "domain": ".facebook.com",
-                    "path": "/"
+                    "path": "/",
+                    "expires": expires_time
                 })
         return cookies
 
@@ -593,7 +733,6 @@ class FacebookAutomationGUI(ctk.CTk):
                     if self.cookie_queue.empty():
                         break
                     continue
-
                 acc_id = self.get_account_id(cookie_str)
                 pending_jobs = []
                 for link, cap_file in self.job_list_global:
@@ -601,31 +740,24 @@ class FacebookAutomationGUI(ctk.CTk):
                         self.log_row(worker_id, link, "---", f"SKIPPED (ALREADY SHARED) Acc {acc_idx}", "WARN")
                     else:
                         pending_jobs.append((link, cap_file))
-
                 if not pending_jobs:
                     self._mark_account_done()
                     continue
-
                 processed += 1
-                browser = None
                 context = None
                 link_idx = 0
                 total_links = len(pending_jobs)
-
+                profile_dir = os.path.join(os.getcwd(), "profiles", acc_id)
+                delete_profile_flag = False
+                success_count = 0
+                was_already_saved = False
                 try:
                     while link_idx < total_links and self.is_running:
                         ln = link_idx + 1
                         link, cap_file = pending_jobs[link_idx]
                         sel_cap = "---"
                         try:
-                            if browser is None or not browser.is_connected():
-                                if browser:
-                                    try:
-                                        if browser in self.active_browsers:
-                                            self.active_browsers.remove(browser)
-                                        browser.close()
-                                    except:
-                                        pass
+                            if context is None:
                                 browser_args = [
                                     "--blink-settings=imagesEnabled=false,videoAutoplayEnabled=false",
                                     "--disable-notifications",
@@ -644,49 +776,54 @@ class FacebookAutomationGUI(ctk.CTk):
                                     "--disk-cache-size=1",
                                     "--media-cache-size=1"
                                 ]
-                                browser = p.chromium.launch(
+                                os.makedirs(profile_dir, exist_ok=True)
+                                context = p.chromium.launch_persistent_context(
+                                    user_data_dir=profile_dir,
                                     headless=True,
-                                    args=browser_args
-                                )
-                                self.active_browsers.append(browser)
-                                context = None
-
-                            if context is None:
-                                context = browser.new_context(
+                                    args=browser_args,
                                     viewport={'width': 360, 'height': 640},
                                     user_agent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
                                 )
-                                cookies = self.parse_playwright_cookies(cookie_str)
-                                if cookies:
-                                    context.add_cookies(cookies)
-                                page = context.new_page()
-
-                            client = context.new_cdp_session(page)
-                            client.send("Network.setUserAgentOverride", {
-                                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                                "platform": "Win32",
-                                "acceptLanguage": "en-US,en;q=0.9"
-                            })
-
-                            if is_fast_mode:
-                                blocked_urls = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.css", "*.mp4", "*.avi",
-                                                "*.woff", "*.woff2", "*.ttf", "*.ico", "*favicon*"]
-                                client.send("Network.enable")
-                                client.send("Network.setBlockedURLs", {"urls": blocked_urls})
-
+                                self.active_browsers.append(context)
+                                current_cookies = context.cookies()
+                                is_logged_in = any(c.get('name') == 'c_user' for c in current_cookies)
+                                was_already_saved = is_logged_in
+                                if not is_logged_in:
+                                    cookies = self.parse_playwright_cookies(cookie_str)
+                                    if cookies:
+                                        context.add_cookies(cookies)
+                                    self.log_row(worker_id, "---", "---", f"INJECTED COOKIE (Acc {acc_idx})",
+                                                 "INFO")
+                                else:
+                                    self.log_row(worker_id, "---", "---", f"USING SAVED SESSION (Acc {acc_idx})",
+                                                 "SUCCESS")
+                                page = context.pages[0] if context.pages else context.new_page()
+                                client = context.new_cdp_session(page)
+                                client.send("Network.setUserAgentOverride", {
+                                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                    "platform": "Win32",
+                                    "acceptLanguage": "en-US,en;q=0.9"
+                                })
+                                if is_fast_mode:
+                                    blocked_urls = ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.css", "*.mp4", "*.avi",
+                                                    "*.woff", "*.woff2", "*.ttf", "*.ico", "*favicon*"]
+                                    client.send("Network.enable")
+                                    client.send("Network.setBlockedURLs", {"urls": blocked_urls})
+                            else:
+                                page = context.pages[0] if context.pages else context.new_page()
                             page.goto(f"https://www.facebook.com/sharer/sharer.php?u={link}", timeout=90 * 1000)
                             dialog_xpath = "xpath=//*[@aria-label='Close composer dialog']"
                             dialog_locator = page.locator(dialog_xpath).first
-
                             try:
                                 dialog_locator.wait_for(state="visible", timeout=30000)
                             except PlaywrightTimeoutError:
                                 self.log_row(worker_id, link, "---", f"COOKIE EXPIRED Account {acc_idx}", "ERROR")
-                                self.error_count += 1
-                                self.total_attempts += 1
+                                delete_profile_flag = True
+                                with self.stats_lock:
+                                    self.error_count += 1
+                                    self.total_attempts += 1
                                 self.update_stats()
                                 break
-
                             if cap_file and os.path.exists(cap_file):
                                 try:
                                     with open(cap_file, "r", encoding="utf-8") as f:
@@ -698,9 +835,9 @@ class FacebookAutomationGUI(ctk.CTk):
                                 except:
                                     pass
 
+                            # TINA-TRY I-CLICK ANG SHARE BUTTON
                             post_btn = page.locator(
                                 "button[type='submit'], input[type='submit'], button[name='share'], button[value='Share'], [aria-label='Share'], button:has-text('Share'), button:has-text('Next')").first
-
                             try:
                                 post_btn.wait_for(state="visible", timeout=15000)
                                 post_btn.click()
@@ -708,56 +845,78 @@ class FacebookAutomationGUI(ctk.CTk):
                                 page.evaluate(
                                     "let btn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"]'); if(btn) btn.click();")
 
+                            # CHECK KUNG SUCCESS TALAGA ANG PAG-CLICK
+                            is_dialog_closed = False
                             try:
                                 dialog_locator.wait_for(state="hidden", timeout=20000)
-                            except:
-                                time.sleep(2)
+                                is_dialog_closed = True
+                            except PlaywrightTimeoutError:
+                                is_dialog_closed = False
 
-                            with self.history_lock:
-                                if link not in self.share_history:
-                                    self.share_history[link] = []
-                                if acc_id not in self.share_history[link]:
-                                    self.share_history[link].append(acc_id)
-                            self.save_share_history()
+                            # KUNG SUMARA ANG DIALOG, SUCCESS YUN
+                            if is_dialog_closed:
+                                with self.history_lock:
+                                    if link not in self.share_history:
+                                        self.share_history[link] = []
+                                    if acc_id not in self.share_history[link]:
+                                        self.share_history[link].append(acc_id)
+                                self.save_share_history()
+                                self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}",
+                                             "SUCCESS")
 
-                            self.log_row(worker_id, link, sel_cap, f"SUCCESS LINK {ln} Account {acc_idx}", "SUCCESS")
-                            self.total_shares += 1
-                            self.total_attempts += 1
-                            self.update_stats()
+                                with self.stats_lock:
+                                    success_count += 1
+                                    self.total_shares += 1
+                                    self.total_attempts += 1
+                                self.update_stats()
+
+                            # KUNG HINDI SUMARA ANG DIALOG, FAILED ANG SHARE
+                            else:
+                                self.log_row(worker_id, link, sel_cap, f"FAILED TO SHARE (Button/Block) Acc {acc_idx}",
+                                             "ERROR")
+                                with self.stats_lock:
+                                    self.error_count += 1
+                                    self.total_attempts += 1
+                                self.update_stats()
+
                             time.sleep(2)
-
                         except Exception as e:
                             err_str = str(e).replace('\n', ' ')
                             traceback.print_exc()
                             self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
-                            self.error_count += 1
-                            self.total_attempts += 1
+                            with self.stats_lock:
+                                self.error_count += 1
+                                self.total_attempts += 1
                             self.update_stats()
-
                         link_idx += 1
-
                 except Exception as e:
                     self.log_row(worker_id, "---", "---", f"FATAL WORKER ERR: {str(e)[:30]}", "ERROR")
                     traceback.print_exc()
-                    self.error_count += 1
-                    self.total_attempts += 1
+                    with self.stats_lock:
+                        self.error_count += 1
+                        self.total_attempts += 1
                     self.update_stats()
                 finally:
                     if context:
                         try:
+                            if context in self.active_browsers:
+                                self.active_browsers.remove(context)
                             context.close()
                         except:
                             pass
-                    if browser:
-                        try:
-                            if browser in self.active_browsers:
-                                self.active_browsers.remove(browser)
-                            browser.close()
-                        except:
-                            pass
+
+                    if delete_profile_flag or (not was_already_saved and success_count == 0):
+                        for _ in range(3):
+                            try:
+                                time.sleep(1.5)
+                                if os.path.exists(profile_dir):
+                                    shutil.rmtree(profile_dir, ignore_errors=True)
+                                if not os.path.exists(profile_dir):
+                                    break
+                            except Exception:
+                                pass
 
                     self._mark_account_done()
-
         self.active_worker_count -= 1
         self.after(0, lambda: self.update_active_threads_ui(self.active_worker_count))
 
@@ -765,7 +924,6 @@ class FacebookAutomationGUI(ctk.CTk):
         self.after(0, lambda: self.overall_stats.update_stats(self.total_shares, self.error_count))
         if hasattr(self, 'log_shares_label'):
             self.after(0, lambda: self.log_shares_label.configure(text=f"✅ SHARES: {self.total_shares}"))
-
         if hasattr(self, 'log_failed_label'):
             self.after(0, lambda: self.log_failed_label.configure(text=f"⚠️ FAILED: {self.error_count}"))
 
@@ -775,28 +933,22 @@ class FacebookAutomationGUI(ctk.CTk):
         if not self.job_list_global:
             messagebox.showerror("Error", "No links configured!")
             return
-
         if not os.path.exists(self.cookie_entry.get()):
             messagebox.showerror("Error", "Invalid Cookie File!")
             return
-
         try:
             with open(self.cookie_entry.get(), "r") as f:
                 ac = [l.strip() for l in f if l.strip()]
             if not ac:
                 raise Exception("Cookie list is empty")
-
             self.update_total_cookies_ui(len(ac))
-
             self.total_accounts_to_process = len(ac)
             self.accounts_processed = 0
             self.update_progress_ui(0, self.total_accounts_to_process)
-
         except Exception as e:
             traceback.print_exc()
             messagebox.showerror("Error", "Cookie file empty/error!")
             return
-
         self._launch_workers(ac)
 
     def _launch_workers(self, ac):
@@ -836,6 +988,7 @@ class FacebookAutomationGUI(ctk.CTk):
             self.after(0, lambda: self.status_badge.configure(text="● FINISHED", text_color=COLORS["text_sub"]))
             self.after(0, lambda: self.start_btn.configure(state="normal"))
             self.after(0, lambda: self.stop_btn.configure(state="disabled"))
+            self.after(0, self.populate_saved_profiles)
 
         threading.Thread(target=monitor, daemon=True).start()
 
@@ -854,6 +1007,7 @@ class FacebookAutomationGUI(ctk.CTk):
                     traceback.print_exc()
             self.active_browsers = []
             self.after(0, lambda: messagebox.showinfo("Stopped", "Automation Force Stopped."))
+            self.after(0, self.populate_saved_profiles)
 
         threading.Thread(target=kill, daemon=True).start()
 
