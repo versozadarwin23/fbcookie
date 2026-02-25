@@ -15,7 +15,7 @@ from datetime import datetime
 import hashlib
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "7"
+__version__ = "8"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -63,15 +63,22 @@ class StatsFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         title = ctk.CTkLabel(self, text="📊 LIVE ANALYTICS", font=FONT_SUBHEADER, text_color=COLORS["primary"])
         title.pack(anchor="w", pady=(0, 10))
+
         self.grid_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.grid_frame.pack(fill="both", expand=True)
         self.grid_frame.grid_columnconfigure((0, 1), weight=1)
+
         self.card_shares = StatCard(self.grid_frame, "Total Shares", "0", "🚀", COLORS["success"])
         self.card_shares.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
+
         self.card_failed = StatCard(self.grid_frame, "Failed", "0", "⚠️", COLORS["danger"])
         self.card_failed.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
+
+        self.card_cookies = StatCard(self.grid_frame, "Total Cookies", "0", "🍪", COLORS["primary"])
+        self.card_cookies.grid(row=1, column=0, padx=(0, 5), pady=(5, 5), sticky="ew")
+
         self.card_devices = StatCard(self.grid_frame, "Active Threads", "0", "💻", COLORS["warning"])
-        self.card_devices.grid(row=1, column=0, columnspan=2, padx=0, pady=(5, 5), sticky="ew")
+        self.card_devices.grid(row=1, column=1, padx=(5, 0), pady=(5, 5), sticky="ew")
 
     def update_stats(self, shares, failed):
         self.card_shares.update_value(shares)
@@ -79,6 +86,9 @@ class StatsFrame(ctk.CTkFrame):
 
     def update_devices(self, count):
         self.card_devices.update_value(count)
+
+    def update_cookies(self, count):
+        self.card_cookies.update_value(count)
 
 
 class PairFrame(ctk.CTkFrame):
@@ -144,18 +154,19 @@ class FacebookAutomationGUI(ctk.CTk):
         self.total_attempts = 0
         self.job_list_global = []
         self.fast_mode_var = ctk.BooleanVar(value=True)
-
-        # [DAGDAG DITO] History Tracking Initialization
         self.history_file = "share_history.json"
         self.history_lock = threading.Lock()
-        self.share_history = self.load_share_history()
 
-        self.load_settings()
+        self.progress_lock = threading.Lock()
+        self.accounts_processed = 0
+        self.total_accounts_to_process = 0
+
+        self.share_history = self.load_share_history()
         self.layout_ui()
+        self.load_settings()
         self.check_for_updates()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    # [DAGDAG DITO] Helper Functions para sa History
     def load_share_history(self):
         if os.path.exists(self.history_file):
             try:
@@ -174,13 +185,11 @@ class FacebookAutomationGUI(ctk.CTk):
                 pass
 
     def get_account_id(self, cookie_str):
-        # Kukunin ang 'c_user' (Facebook User ID) mula sa cookie para maging unique ID
         for pair in cookie_str.split(";"):
             if "=" in pair:
                 name, value = pair.strip().split("=", 1)
                 if name == "c_user":
                     return value
-        # Kung walang c_user, i-hash ang buong cookie bilang fallback
         return hashlib.md5(cookie_str.encode()).hexdigest()
 
     def check_for_updates(self, manual=False):
@@ -325,13 +334,24 @@ class FacebookAutomationGUI(ctk.CTk):
 
     def setup_logs(self):
         self.tab_logs.grid_columnconfigure(0, weight=1)
-        self.tab_logs.grid_rowconfigure(1, weight=1)
+        self.tab_logs.grid_rowconfigure(2, weight=1)
+
         top_bar = ctk.CTkFrame(self.tab_logs, fg_color="transparent", height=40)
-        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 10))
+        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5))
         ctk.CTkLabel(top_bar, text="VIEWING LOGS:", font=FONT_SUBHEADER).pack(side="left", padx=(0, 10))
+
         self.log_shares_label = ctk.CTkLabel(top_bar, text="✅ SHARES: 0", font=("Roboto", 13, "bold"),
                                              text_color=COLORS["success"])
         self.log_shares_label.pack(side="left", padx=(0, 15))
+
+        self.log_failed_label = ctk.CTkLabel(top_bar, text="⚠️ FAILED: 0", font=("Roboto", 13, "bold"),
+                                             text_color=COLORS["danger"])
+        self.log_failed_label.pack(side="left", padx=(0, 15))
+
+        self.log_cookies_label = ctk.CTkLabel(top_bar, text="🍪 COOKIES: 0", font=("Roboto", 13, "bold"),
+                                              text_color=COLORS["primary"])
+        self.log_cookies_label.pack(side="left", padx=(0, 15))
+
         self.log_threads_label = ctk.CTkLabel(top_bar, text="💻 ACTIVE THREADS: 0", font=("Roboto", 13, "bold"),
                                               text_color=COLORS["warning"])
         self.log_threads_label.pack(side="left", padx=(0, 15))
@@ -342,9 +362,22 @@ class FacebookAutomationGUI(ctk.CTk):
         ctk.CTkButton(top_bar, text="🗑 Clear", width=90, height=32, fg_color="transparent", border_width=1,
                       border_color=COLORS["border"], hover_color=COLORS["bg_lighter"], corner_radius=8,
                       command=self.clear_logs).pack(side="right", padx=(0, 10))
+
+        progress_frame = ctk.CTkFrame(self.tab_logs, fg_color="transparent")
+        progress_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+
+        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0 / 0 Accounts", font=("Roboto", 12, "bold"),
+                                           text_color=COLORS["text_sub"])
+        self.progress_label.pack(side="left", padx=(0, 15))
+
+        self.progress_bar = ctk.CTkProgressBar(progress_frame, fg_color=COLORS["bg_card"],
+                                               progress_color=COLORS["primary"], height=12)
+        self.progress_bar.pack(side="left", fill="x", expand=True)
+        self.progress_bar.set(0)
+
         logs_container = ctk.CTkFrame(self.tab_logs, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                                       border_color=COLORS["border"])
-        logs_container.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        logs_container.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         logs_container.grid_columnconfigure(0, weight=1)
         logs_container.grid_rowconfigure(0, weight=1)
         style = ttk.Style()
@@ -377,17 +410,29 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.tag_configure("WARN", foreground=COLORS["warning"])
         self.table_auto.bind("<Double-1>", self.on_log_double_click)
 
+    def update_progress_ui(self, processed, total):
+        if total > 0:
+            val = processed / total
+            self.progress_bar.set(val)
+            self.progress_label.configure(text=f"Progress: {processed} / {total} Accounts")
+        else:
+            self.progress_bar.set(0)
+            self.progress_label.configure(text="Progress: 0 / 0 Accounts")
+
+    # [FIXED] Pasa ang orig na link patungo sa _safe_insert
     def log_row(self, worker_id, link, caption, status, level="INFO"):
         ts = datetime.now().strftime("%I:%M:%S %p")
         d_name = worker_id
         disp_link = (link[:40] + '...') if len(link) > 40 else link
         disp_cap = (caption[:40] + '...') if caption and len(caption) > 40 else caption
         if not disp_cap: disp_cap = "---"
-        self.after(10, lambda: self._safe_insert(self.table_auto, (ts, d_name, disp_link, disp_cap, status), level))
+        self.after(10, lambda: self._safe_insert(self.table_auto, (ts, d_name, disp_link, disp_cap, status), level,
+                                                 full_link=link))
 
-    def _safe_insert(self, tree, values, tag):
+    # [FIXED] Itatago ang full_link sa invisible na "text" parameter ng row
+    def _safe_insert(self, tree, values, tag, full_link=""):
         try:
-            tree.insert("", "end", values=values, tags=(tag,))
+            tree.insert("", "end", text=full_link, values=values, tags=(tag,))
             children = tree.get_children()
             if len(children) > 100:
                 tree.delete(children[0])
@@ -399,11 +444,19 @@ class FacebookAutomationGUI(ctk.CTk):
         for item in self.table_auto.get_children():
             self.table_auto.delete(item)
 
+    # [FIXED] Kukunin ngayon ang nakatagong buong link sa halip na ang display text lang
     def on_log_double_click(self, event):
         try:
             tree = event.widget
             item = tree.item(tree.identify_row(event.y))
-            url = item['values'][2]
+
+            # Kukunin yung full link mula sa 'text' property na hindi nakikita sa UI
+            url = item.get('text', '')
+
+            # Fallback (kung sakaling walang text, gamitin parin ang values)
+            if not url:
+                url = item['values'][2]
+
             if "http" in url:
                 webbrowser.open(url)
         except Exception as e:
@@ -414,12 +467,24 @@ class FacebookAutomationGUI(ctk.CTk):
         self.destroy()
         os._exit(0)
 
+    def _count_and_update_cookies(self, file_path):
+        if file_path and os.path.exists(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    ac = [l.strip() for l in f if l.strip()]
+                self.update_total_cookies_ui(len(ac))
+            except Exception as e:
+                self.update_total_cookies_ui(0)
+        else:
+            self.update_total_cookies_ui(0)
+
     def browse_global_cookie(self):
         f = filedialog.askopenfilename(filetypes=[("Txt", "*.txt")])
         if f:
             self.cookie_entry.delete(0, "end")
             self.cookie_entry.insert(0, f)
             self.global_cookie_path = f
+            self._count_and_update_cookies(f)
 
     def load_settings(self):
         try:
@@ -437,9 +502,13 @@ class FacebookAutomationGUI(ctk.CTk):
             self.dash_pre_delay.insert(0, d.get("dash_pre_delay", "10"))
             self.dash_post_delay.delete(0, "end")
             self.dash_post_delay.insert(0, d.get("dash_post_delay", "10"))
+            cookie_path = d.get("global_cookie_path", "")
             if hasattr(self, 'cookie_entry'):
                 self.cookie_entry.delete(0, "end")
-                self.cookie_entry.insert(0, d.get("global_cookie_path", ""))
+                self.cookie_entry.insert(0, cookie_path)
+
+            self._count_and_update_cookies(cookie_path)
+
         except Exception as e:
             pass
 
@@ -486,17 +555,31 @@ class FacebookAutomationGUI(ctk.CTk):
         if hasattr(self, 'log_threads_label'):
             self.log_threads_label.configure(text=f"💻 ACTIVE THREADS: {count}")
 
+    def update_total_cookies_ui(self, count):
+        self.overall_stats.update_cookies(count)
+        if hasattr(self, 'log_cookies_label'):
+            self.log_cookies_label.configure(text=f"🍪 COOKIES: {count}")
+
+    def _mark_account_done(self):
+        try:
+            self.cookie_queue.task_done()
+        except:
+            pass
+        with self.progress_lock:
+            self.accounts_processed += 1
+            c = self.accounts_processed
+            t = self.total_accounts_to_process
+        self.after(0, lambda: self.update_progress_ui(c, t))
+
     def run_pc_automation(self, worker_id):
         self.log_row(worker_id, "---", "---", "🚀 STARTED", "INFO")
         try:
             pre_wait = float(self.dash_pre_delay.get())
         except Exception as e:
             pre_wait = 5.0
-
         is_fast_mode = self.fast_mode_var.get()
         limit = 0
         processed = 0
-
         with sync_playwright() as p:
             while self.is_running:
                 if limit > 0 and processed >= limit:
@@ -511,10 +594,7 @@ class FacebookAutomationGUI(ctk.CTk):
                         break
                     continue
 
-                # Kunin agad ang Account ID bago mag-open ng browser
                 acc_id = self.get_account_id(cookie_str)
-
-                # I-filter ang mga links para i-skip agad ang mga tapos na
                 pending_jobs = []
                 for link, cap_file in self.job_list_global:
                     if link in self.share_history and acc_id in self.share_history[link]:
@@ -523,17 +603,12 @@ class FacebookAutomationGUI(ctk.CTk):
                         pending_jobs.append((link, cap_file))
 
                 if not pending_jobs:
-                    if self.is_running:
-                        try:
-                            self.cookie_queue.task_done()
-                        except:
-                            pass
+                    self._mark_account_done()
                     continue
 
                 processed += 1
                 browser = None
                 context = None
-
                 link_idx = 0
                 total_links = len(pending_jobs)
 
@@ -542,7 +617,6 @@ class FacebookAutomationGUI(ctk.CTk):
                         ln = link_idx + 1
                         link, cap_file = pending_jobs[link_idx]
                         sel_cap = "---"
-
                         try:
                             if browser is None or not browser.is_connected():
                                 if browser:
@@ -608,6 +682,9 @@ class FacebookAutomationGUI(ctk.CTk):
                                 dialog_locator.wait_for(state="visible", timeout=30000)
                             except PlaywrightTimeoutError:
                                 self.log_row(worker_id, link, "---", f"COOKIE EXPIRED Account {acc_idx}", "ERROR")
+                                self.error_count += 1
+                                self.total_attempts += 1
+                                self.update_stats()
                                 break
 
                             if cap_file and os.path.exists(cap_file):
@@ -621,10 +698,20 @@ class FacebookAutomationGUI(ctk.CTk):
                                 except:
                                     pass
 
-                            post_btn = page.get_by_role("button", name="Share", exact=True).or_(
-                                page.get_by_role("button", name="Next", exact=True)).first
-                            post_btn.click()
-                            post_btn.wait_for(state="detached", timeout=30000)
+                            post_btn = page.locator(
+                                "button[type='submit'], input[type='submit'], button[name='share'], button[value='Share'], [aria-label='Share'], button:has-text('Share'), button:has-text('Next')").first
+
+                            try:
+                                post_btn.wait_for(state="visible", timeout=15000)
+                                post_btn.click()
+                            except PlaywrightTimeoutError:
+                                page.evaluate(
+                                    "let btn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"]'); if(btn) btn.click();")
+
+                            try:
+                                dialog_locator.wait_for(state="hidden", timeout=20000)
+                            except:
+                                time.sleep(2)
 
                             with self.history_lock:
                                 if link not in self.share_history:
@@ -642,8 +729,6 @@ class FacebookAutomationGUI(ctk.CTk):
                         except Exception as e:
                             err_str = str(e).replace('\n', ' ')
                             traceback.print_exc()
-
-                            # Tinanggal na natin ang retry logic dito. Mag-lolog na lang ito ng error at didiretso sa next link.
                             self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
                             self.error_count += 1
                             self.total_attempts += 1
@@ -654,6 +739,9 @@ class FacebookAutomationGUI(ctk.CTk):
                 except Exception as e:
                     self.log_row(worker_id, "---", "---", f"FATAL WORKER ERR: {str(e)[:30]}", "ERROR")
                     traceback.print_exc()
+                    self.error_count += 1
+                    self.total_attempts += 1
+                    self.update_stats()
                 finally:
                     if context:
                         try:
@@ -667,11 +755,8 @@ class FacebookAutomationGUI(ctk.CTk):
                             browser.close()
                         except:
                             pass
-                    if self.is_running:
-                        try:
-                            self.cookie_queue.task_done()
-                        except:
-                            pass
+
+                    self._mark_account_done()
 
         self.active_worker_count -= 1
         self.after(0, lambda: self.update_active_threads_ui(self.active_worker_count))
@@ -681,24 +766,37 @@ class FacebookAutomationGUI(ctk.CTk):
         if hasattr(self, 'log_shares_label'):
             self.after(0, lambda: self.log_shares_label.configure(text=f"✅ SHARES: {self.total_shares}"))
 
+        if hasattr(self, 'log_failed_label'):
+            self.after(0, lambda: self.log_failed_label.configure(text=f"⚠️ FAILED: {self.error_count}"))
+
     def start_threads(self):
         self.job_list_global = [(p.link_entry.get(), p.caption_path.get()) for p in self.pair_widgets if
                                 p.link_entry.get().strip()]
         if not self.job_list_global:
             messagebox.showerror("Error", "No links configured!")
             return
+
         if not os.path.exists(self.cookie_entry.get()):
             messagebox.showerror("Error", "Invalid Cookie File!")
             return
+
         try:
             with open(self.cookie_entry.get(), "r") as f:
                 ac = [l.strip() for l in f if l.strip()]
             if not ac:
                 raise Exception("Cookie list is empty")
+
+            self.update_total_cookies_ui(len(ac))
+
+            self.total_accounts_to_process = len(ac)
+            self.accounts_processed = 0
+            self.update_progress_ui(0, self.total_accounts_to_process)
+
         except Exception as e:
             traceback.print_exc()
             messagebox.showerror("Error", "Cookie file empty/error!")
             return
+
         self._launch_workers(ac)
 
     def _launch_workers(self, ac):
