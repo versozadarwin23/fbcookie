@@ -17,7 +17,7 @@ import hashlib
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-__version__ = "10"
+__version__ = "11"
 UPDATE_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/main.py"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/refs/heads/main/version.txt"
 
@@ -150,6 +150,8 @@ class FacebookAutomationGUI(ctk.CTk):
         # Counters
         self.total_shares = 0
         self.error_count = 0
+        self.expired_count = 0
+        self.expired_accounts = set()
         self.total_attempts = 0
         self.job_list_global = []
         self.fast_mode_var = ctk.BooleanVar(value=True)
@@ -236,9 +238,33 @@ class FacebookAutomationGUI(ctk.CTk):
         else:
             self.after(6000, self.check_for_updates)
 
+    # <--- ANIMATION OVERLAY FUNCTION --->
+    def play_tab_transition(self, tab_frame):
+        overlay = ctk.CTkFrame(tab_frame, fg_color=COLORS["bg_main"], corner_radius=0)
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        def wipe_out(step):
+            if step > 0:
+                overlay.place(relheight=step)
+                self.after(15, lambda: wipe_out(step - 0.15))
+            else:
+                overlay.place_forget()
+                overlay.destroy()
+
+        wipe_out(1.0)
+
+    # <--- UPDATED TAB CHANGE EVENT WITH ANIMATION --->
     def on_tab_change(self):
-        if self.tabview.get() == "   Saved Profiles   ":
+        selected = self.tabview.get()
+        if selected == "   Saved Profiles   ":
             self.populate_saved_profiles()
+            self.play_tab_transition(self.tab_saved)
+        elif selected == "   Expired Cookies   ":
+            self.play_tab_transition(self.tab_expired)
+        elif selected == "   System Logs   ":
+            self.play_tab_transition(self.tab_logs)
+        elif selected == "   Dashboard   ":
+            self.play_tab_transition(self.tab_dash)
 
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
@@ -254,6 +280,7 @@ class FacebookAutomationGUI(ctk.CTk):
         main_content.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
         main_content.grid_rowconfigure(0, weight=1)
         main_content.grid_columnconfigure(0, weight=1)
+
         self.tabview = ctk.CTkTabview(main_content, fg_color=COLORS["bg_main"], corner_radius=12,
                                       segmented_button_selected_color=COLORS["primary"],
                                       segmented_button_selected_hover_color="#2563EB",
@@ -261,12 +288,16 @@ class FacebookAutomationGUI(ctk.CTk):
                                       segmented_button_unselected_hover_color=COLORS["bg_lighter"],
                                       command=self.on_tab_change)
         self.tabview.grid(row=0, column=0, sticky="nsew")
+
         self.tab_dash = self.tabview.add("   Dashboard   ")
         self.tab_logs = self.tabview.add("   System Logs   ")
         self.tab_saved = self.tabview.add("   Saved Profiles   ")
+        self.tab_expired = self.tabview.add("   Expired Cookies   ")
+
         self.setup_dashboard()
         self.setup_logs()
         self.setup_saved_profiles()
+        self.setup_expired_cookies()
 
     def setup_dashboard(self):
         self.tab_dash.grid_columnconfigure(1, weight=1)
@@ -375,8 +406,13 @@ class FacebookAutomationGUI(ctk.CTk):
                                              text_color=COLORS["success"])
         self.log_shares_label.pack(side="left", padx=(0, 15))
         self.log_failed_label = ctk.CTkLabel(top_bar, text="⚠️ FAILED: 0", font=("Roboto", 13, "bold"),
-                                             text_color=COLORS["danger"])
+                                             text_color=COLORS["warning"])
         self.log_failed_label.pack(side="left", padx=(0, 15))
+
+        self.log_expired_label = ctk.CTkLabel(top_bar, text="❌ EXPIRED: 0", font=("Roboto", 13, "bold"),
+                                              text_color=COLORS["danger"])
+        self.log_expired_label.pack(side="left", padx=(0, 15))
+
         self.log_cookies_label = ctk.CTkLabel(top_bar, text="🍪 COOKIES: 0", font=("Roboto", 13, "bold"),
                                               text_color=COLORS["primary"])
         self.log_cookies_label.pack(side="left", padx=(0, 15))
@@ -404,6 +440,7 @@ class FacebookAutomationGUI(ctk.CTk):
         logs_container.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         logs_container.grid_columnconfigure(0, weight=1)
         logs_container.grid_rowconfigure(0, weight=1)
+
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Treeview", background=COLORS["bg_card"], foreground=COLORS["text_main"],
@@ -411,6 +448,7 @@ class FacebookAutomationGUI(ctk.CTk):
         style.map('Treeview', background=[('selected', COLORS["bg_lighter"])])
         style.configure("Treeview.Heading", background=COLORS["bg_main"], foreground=COLORS["text_sub"],
                         font=("Roboto", 11, "bold"), borderwidth=0, padding=(0, 8))
+
         tree_f1 = ctk.CTkFrame(logs_container, corner_radius=12, fg_color="transparent")
         tree_f1.pack(fill="both", expand=True, padx=2, pady=2)
         cols1 = ("Time", "Worker", "Link", "Caption", "Status")
@@ -433,6 +471,110 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.tag_configure("ERROR", foreground=COLORS["danger"])
         self.table_auto.tag_configure("WARN", foreground=COLORS["warning"])
         self.table_auto.bind("<Double-1>", self.on_log_double_click)
+
+    # <--- REDESIGNED EXPIRED COOKIES TAB --->
+    def setup_expired_cookies(self):
+        self.tab_expired.grid_columnconfigure(0, weight=1)
+        self.tab_expired.grid_rowconfigure(1, weight=1)
+
+        # Header Card para modern ang look
+        header_card = ctk.CTkFrame(self.tab_expired, fg_color=COLORS["bg_card"], corner_radius=15, border_width=1,
+                                   border_color=COLORS["border"])
+        header_card.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+
+        title_frame = ctk.CTkFrame(header_card, fg_color="transparent")
+        title_frame.pack(side="left", padx=20, pady=15)
+
+        ctk.CTkLabel(title_frame, text="❌", font=("Segoe UI Emoji", 24)).pack(side="left", padx=(0, 10))
+        text_frame = ctk.CTkFrame(title_frame, fg_color="transparent")
+        text_frame.pack(side="left")
+        ctk.CTkLabel(text_frame, text="EXPIRED ACCOUNTS", font=FONT_SUBHEADER, text_color=COLORS["danger"]).pack(
+            anchor="w")
+        self.lbl_total_expired_tab = ctk.CTkLabel(text_frame, text="Total: 0", font=("Roboto", 12),
+                                                  text_color=COLORS["text_sub"])
+        self.lbl_total_expired_tab.pack(anchor="w")
+
+        btn_frame = ctk.CTkFrame(header_card, fg_color="transparent")
+        btn_frame.pack(side="right", padx=20, pady=15)
+
+        ctk.CTkButton(btn_frame, text="🗑 Clear All", width=100, height=35, fg_color="transparent", border_width=1,
+                      border_color=COLORS["danger"], text_color=COLORS["danger"], hover_color="#B91C1C",
+                      corner_radius=8, command=self.clear_expired).pack(side="right", padx=(5, 0))
+        ctk.CTkButton(btn_frame, text="📋 Copy All", width=100, height=35, fg_color=COLORS["success"],
+                      hover_color="#059669", corner_radius=8, command=self.copy_all_expired).pack(side="right",
+                                                                                                  padx=(5, 5))
+        ctk.CTkButton(btn_frame, text="📋 Copy Selected", width=120, height=35, fg_color=COLORS["primary"],
+                      hover_color="#2563EB", corner_radius=8, command=self.copy_selected_expired).pack(side="right",
+                                                                                                       padx=(0, 5))
+
+        # Styled Table Container
+        tree_frame = ctk.CTkFrame(self.tab_expired, corner_radius=15, fg_color=COLORS["bg_card"], border_width=1,
+                                  border_color=COLORS["border"])
+        tree_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+
+        cols = ("No", "Profile Link")
+        self.table_expired = ttk.Treeview(tree_frame, columns=cols, show="headings", height=15)
+        self.table_expired.heading("No", text="NO.", anchor="center")
+        self.table_expired.column("No", width=50, anchor="center", stretch=False)
+        self.table_expired.heading("Profile Link", text="PROFILE LINK (Double click to open)", anchor="w")
+        self.table_expired.column("Profile Link", width=800, anchor="w")
+
+        sb = ctk.CTkScrollbar(tree_frame, command=self.table_expired.yview)
+        self.table_expired.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y", pady=10, padx=(0, 10))
+        self.table_expired.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        self.table_expired.bind("<Double-1>", self.on_expired_double_click)
+
+    def add_expired_to_tree(self, link):
+        idx = len(self.table_expired.get_children()) + 1
+        self.table_expired.insert("", "end", values=(idx, link))
+        self.lbl_total_expired_tab.configure(text=f"Total: {idx}")
+
+    def clear_expired(self):
+        ans = messagebox.askyesno("Clear",
+                                  "Are you sure you want to clear the expired accounts list? \n\n(This allows the system to detect these accounts again on the next run)")
+        if ans:
+            for item in self.table_expired.get_children():
+                self.table_expired.delete(item)
+            with self.stats_lock:
+                self.expired_accounts.clear()
+                self.expired_count = 0
+            self.lbl_total_expired_tab.configure(text="Total: 0")
+            self.update_stats()
+
+    def copy_selected_expired(self):
+        selected = self.table_expired.selection()
+        if not selected:
+            messagebox.showinfo("Info", "Please select a row first.")
+            return
+        link = self.table_expired.item(selected[0])['values'][1]
+        self.clipboard_clear()
+        self.clipboard_append(link)
+        self.update()
+        messagebox.showinfo("Copied", "Selected profile link copied to clipboard!")
+
+    def copy_all_expired(self):
+        items = self.table_expired.get_children()
+        if not items:
+            messagebox.showinfo("Info", "List is empty.")
+            return
+        links = [self.table_expired.item(i)['values'][1] for i in items]
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(links))
+        self.update()
+        messagebox.showinfo("Copied", f"Copied {len(links)} profile links to clipboard!")
+
+    def on_expired_double_click(self, event):
+        try:
+            item = self.table_expired.selection()[0]
+            url = self.table_expired.item(item)['values'][1]
+            if "http" in url:
+                webbrowser.open(url)
+        except Exception:
+            pass
 
     def setup_saved_profiles(self):
         self.tab_saved.grid_columnconfigure(0, weight=1)
@@ -537,7 +679,6 @@ class FacebookAutomationGUI(ctk.CTk):
             row_widget.destroy()
             self.overall_stats.update_cookies(max(0, int(self.overall_stats.card_cookies.value_var.get()) - 1))
 
-            # Subtract 1 from the total label
             current_text = self.lbl_total_saved.cget("text")
             current_count = int(current_text.split(": ")[1])
             self.lbl_total_saved.configure(text=f"Total: {max(0, current_count - 1)}")
@@ -817,11 +958,24 @@ class FacebookAutomationGUI(ctk.CTk):
                             try:
                                 dialog_locator.wait_for(state="visible", timeout=30000)
                             except PlaywrightTimeoutError:
-                                self.log_row(worker_id, link, "---", f"COOKIE EXPIRED Account {acc_idx}", "ERROR")
-                                delete_profile_flag = True
+                                fb_profile_link = f"https://www.facebook.com/{acc_id}"
+
+                                # PAG-ADD SA TRACKER AT SA EXPIRED TAB
                                 with self.stats_lock:
+                                    if acc_id not in self.expired_accounts:
+                                        self.expired_accounts.add(acc_id)
+                                        self.expired_count += 1
+                                        self.log_row(worker_id, fb_profile_link, "---",
+                                                     f"COOKIE EXPIRED Account {acc_idx}", "ERROR")
+                                        self.after(0, lambda link=fb_profile_link: self.add_expired_to_tree(link))
+                                    else:
+                                        self.log_row(worker_id, fb_profile_link, "---",
+                                                     f"SKIPPED (ALREADY EXPIRED) Acc {acc_idx}", "WARN")
+
                                     self.error_count += 1
                                     self.total_attempts += 1
+
+                                delete_profile_flag = True
                                 self.update_stats()
                                 break
                             if cap_file and os.path.exists(cap_file):
@@ -835,7 +989,6 @@ class FacebookAutomationGUI(ctk.CTk):
                                 except:
                                     pass
 
-                            # TINA-TRY I-CLICK ANG SHARE BUTTON
                             post_btn = page.locator(
                                 "button[type='submit'], input[type='submit'], button[name='share'], button[value='Share'], [aria-label='Share'], button:has-text('Share'), button:has-text('Next')").first
                             try:
@@ -845,7 +998,6 @@ class FacebookAutomationGUI(ctk.CTk):
                                 page.evaluate(
                                     "let btn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"]'); if(btn) btn.click();")
 
-                            # CHECK KUNG SUCCESS TALAGA ANG PAG-CLICK
                             is_dialog_closed = False
                             try:
                                 dialog_locator.wait_for(state="hidden", timeout=20000)
@@ -853,7 +1005,6 @@ class FacebookAutomationGUI(ctk.CTk):
                             except PlaywrightTimeoutError:
                                 is_dialog_closed = False
 
-                            # KUNG SUMARA ANG DIALOG, SUCCESS YUN
                             if is_dialog_closed:
                                 with self.history_lock:
                                     if link not in self.share_history:
@@ -869,8 +1020,6 @@ class FacebookAutomationGUI(ctk.CTk):
                                     self.total_shares += 1
                                     self.total_attempts += 1
                                 self.update_stats()
-
-                            # KUNG HINDI SUMARA ANG DIALOG, FAILED ANG SHARE
                             else:
                                 self.log_row(worker_id, link, sel_cap, f"FAILED TO SHARE (Button/Block) Acc {acc_idx}",
                                              "ERROR")
@@ -926,6 +1075,8 @@ class FacebookAutomationGUI(ctk.CTk):
             self.after(0, lambda: self.log_shares_label.configure(text=f"✅ SHARES: {self.total_shares}"))
         if hasattr(self, 'log_failed_label'):
             self.after(0, lambda: self.log_failed_label.configure(text=f"⚠️ FAILED: {self.error_count}"))
+        if hasattr(self, 'log_expired_label'):
+            self.after(0, lambda: self.log_expired_label.configure(text=f"❌ EXPIRED: {self.expired_count}"))
 
     def start_threads(self):
         self.job_list_global = [(p.link_entry.get(), p.caption_path.get()) for p in self.pair_widgets if
