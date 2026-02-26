@@ -24,37 +24,46 @@ VERSION_CHECK_URL = "https://raw.githubusercontent.com/versozadarwin23/fbcookie/
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
+# --- UI REVAMP: Modern Indigo & Slate Palette ---
 COLORS = {
-    "bg_main": "#0F172A",
-    "bg_card": "#1E293B",
-    "bg_lighter": "#334155",
-    "primary": "#3B82F6",
-    "success": "#10B981",
-    "warning": "#F59E0B",
-    "danger": "#EF4444",
-    "text_main": "#F8FAFC",
-    "text_sub": "#94A3B8",
-    "border": "#475569"
+    "bg_main": "#0B0F19",  # Deep space dark
+    "bg_card": "#151B2B",  # Elevated card background
+    "bg_lighter": "#1F2937",  # Hover states
+    "primary": "#6366F1",  # Modern Indigo
+    "primary_hover": "#4F46E5",  # Darker Indigo for hover
+    "success": "#10B981",  # Emerald green
+    "warning": "#F59E0B",  # Amber
+    "danger": "#F43F5E",  # Rose/Red
+    "text_main": "#F9FAFB",  # Clean white
+    "text_sub": "#9CA3AF",  # Muted gray
+    "border": "#374151"  # Subtle borders
 }
 
-FONT_HEADER = ("Roboto", 20, "bold")
+FONT_HEADER = ("Roboto", 22, "bold")
 FONT_SUBHEADER = ("Roboto", 14, "bold")
 FONT_BODY = ("Roboto", 12)
+FONT_BOLD = ("Roboto", 12, "bold")
 
 
 class StatCard(ctk.CTkFrame):
     def __init__(self, parent, title, value, icon, color):
-        super().__init__(parent, fg_color=COLORS["bg_card"], corner_radius=15, border_width=1,
+        super().__init__(parent, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                          border_color=COLORS["border"])
         self.value_var = ctk.StringVar(value=str(value))
-        self.icon_label = ctk.CTkLabel(self, text=icon, font=("Segoe UI Emoji", 26))
-        self.icon_label.place(relx=0.85, rely=0.35, anchor="center")
+
+        # Icon positioned nicely at the top right
+        self.icon_label = ctk.CTkLabel(self, text=icon, font=("Segoe UI Emoji", 24))
+        self.icon_label.place(relx=0.85, rely=0.30, anchor="center")
+
+        # Title
         self.title_label = ctk.CTkLabel(self, text=title.upper(), font=("Roboto", 11, "bold"),
                                         text_color=COLORS["text_sub"])
-        self.title_label.pack(anchor="w", padx=15, pady=(12, 0))
-        self.value_label = ctk.CTkLabel(self, textvariable=self.value_var, font=("Roboto", 28, "bold"),
+        self.title_label.pack(anchor="nw", padx=15, pady=(15, 0))
+
+        # Value
+        self.value_label = ctk.CTkLabel(self, textvariable=self.value_var, font=("Roboto", 32, "bold"),
                                         text_color=color)
-        self.value_label.pack(anchor="w", padx=15, pady=(0, 12))
+        self.value_label.pack(anchor="sw", padx=15, pady=(5, 15))
 
     def update_value(self, new_value):
         self.value_var.set(str(new_value))
@@ -63,19 +72,24 @@ class StatCard(ctk.CTkFrame):
 class StatsFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="transparent")
-        title = ctk.CTkLabel(self, text="📊 LIVE ANALYTICS", font=FONT_SUBHEADER, text_color=COLORS["primary"])
-        title.pack(anchor="w", pady=(0, 10))
+        title = ctk.CTkLabel(self, text="📊 LIVE ANALYTICS", font=FONT_SUBHEADER, text_color=COLORS["text_main"])
+        title.pack(anchor="w", pady=(0, 12))
+
         self.grid_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.grid_frame.pack(fill="both", expand=True)
         self.grid_frame.grid_columnconfigure((0, 1), weight=1)
+
         self.card_shares = StatCard(self.grid_frame, "Total Shares", "0", "🚀", COLORS["success"])
-        self.card_shares.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
+        self.card_shares.grid(row=0, column=0, padx=(0, 6), pady=6, sticky="ew")
+
         self.card_failed = StatCard(self.grid_frame, "Failed", "0", "⚠️", COLORS["danger"])
-        self.card_failed.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
-        self.card_cookies = StatCard(self.grid_frame, "Total Cookies", "0", "🍪", COLORS["primary"])
-        self.card_cookies.grid(row=1, column=0, padx=(0, 5), pady=(5, 5), sticky="ew")
-        self.card_devices = StatCard(self.grid_frame, "Active Threads", "0", "💻", COLORS["warning"])
-        self.card_devices.grid(row=1, column=1, padx=(5, 0), pady=(5, 5), sticky="ew")
+        self.card_failed.grid(row=0, column=1, padx=(6, 0), pady=6, sticky="ew")
+
+        self.card_cookies = StatCard(self.grid_frame, "Cookies", "0", "🍪", COLORS["primary"])
+        self.card_cookies.grid(row=1, column=0, padx=(0, 6), pady=(6, 6), sticky="ew")
+
+        self.card_devices = StatCard(self.grid_frame, "Threads", "0", "💻", COLORS["warning"])
+        self.card_devices.grid(row=1, column=1, padx=(6, 0), pady=(6, 6), sticky="ew")
 
     def update_stats(self, shares, failed):
         self.card_shares.update_value(shares)
@@ -93,31 +107,38 @@ class PairFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                          border_color=COLORS["border"])
         self.on_remove = on_remove
+
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=15, pady=(10, 5))
+        header.pack(fill="x", padx=15, pady=(12, 8))
+
         self.header_label = ctk.CTkLabel(header, text=f"📍 LINK #{pair_num}", font=("Roboto", 13, "bold"),
                                          text_color=COLORS["primary"])
         self.header_label.pack(side="left")
+
         if pair_num > 1:
-            btn_del = ctk.CTkButton(header, text="✖", width=28, height=28, fg_color="transparent",
-                                    hover_color=COLORS["danger"], text_color=COLORS["text_sub"], corner_radius=8,
+            btn_del = ctk.CTkButton(header, text="✖", width=28, height=28, fg_color=COLORS["bg_lighter"],
+                                    hover_color=COLORS["danger"], text_color=COLORS["text_sub"], corner_radius=6,
                                     command=self.remove)
             btn_del.pack(side="right")
+
         content = ctk.CTkFrame(self, fg_color="transparent")
         content.pack(fill="x", padx=15, pady=(0, 15))
-        self.link_entry = ctk.CTkEntry(content, height=35, placeholder_text="Enter Target URL",
-                                       fg_color=COLORS["bg_main"], border_color=COLORS["border"], corner_radius=8,
+
+        self.link_entry = ctk.CTkEntry(content, height=38,
+                                       placeholder_text="Enter Target URL (e.g., https://fb.com/...)",
+                                       fg_color=COLORS["bg_main"], border_color=COLORS["border"], corner_radius=6,
                                        font=FONT_BODY)
         self.link_entry.pack(fill="x", pady=(0, 10))
+
         cap_row = ctk.CTkFrame(content, fg_color="transparent")
         cap_row.pack(fill="x")
-        self.caption_path = ctk.CTkEntry(cap_row, height=35, placeholder_text="Caption File (.txt)",
-                                         fg_color=COLORS["bg_main"], border_color=COLORS["border"], corner_radius=8,
+        self.caption_path = ctk.CTkEntry(cap_row, height=38, placeholder_text="Select Caption File (.txt)",
+                                         fg_color=COLORS["bg_main"], border_color=COLORS["border"], corner_radius=6,
                                          font=FONT_BODY)
         self.caption_path.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        btn_browse = ctk.CTkButton(cap_row, text="📂", width=45, height=35, fg_color=COLORS["bg_lighter"],
+        btn_browse = ctk.CTkButton(cap_row, text="📂", width=45, height=38, fg_color=COLORS["bg_lighter"],
                                    hover_color=COLORS["primary"], border_width=1, border_color=COLORS["border"],
-                                   corner_radius=8, command=self.browse_caption)
+                                   corner_radius=6, command=self.browse_caption)
         btn_browse.pack(side="right")
 
     def remove(self):
@@ -137,8 +158,8 @@ class FacebookAutomationGUI(ctk.CTk):
         self.saved_settings = {}
         self.active_browsers = []
         self.cookie_queue = queue.Queue()
-        self.title(f"AutoPost V{__version__}")
-        self.geometry("1100x700")
+        self.title(f"AutoPost V{__version__} - Pro Edition")
+        self.geometry("1150x750")
         self.after(0, lambda: self.state("zoomed"))
         self.configure(fg_color=COLORS["bg_main"])
         self.is_running = False
@@ -238,7 +259,6 @@ class FacebookAutomationGUI(ctk.CTk):
         else:
             self.after(6000, self.check_for_updates)
 
-    # <--- ANIMATION OVERLAY FUNCTION --->
     def play_tab_transition(self, tab_frame):
         overlay = ctk.CTkFrame(tab_frame, fg_color=COLORS["bg_main"], corner_radius=0)
         overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -253,7 +273,6 @@ class FacebookAutomationGUI(ctk.CTk):
 
         wipe_out(1.0)
 
-    # <--- UPDATED TAB CHANGE EVENT WITH ANIMATION --->
     def on_tab_change(self):
         selected = self.tabview.get()
         if selected == "   Saved Profiles   ":
@@ -269,23 +288,39 @@ class FacebookAutomationGUI(ctk.CTk):
     def layout_ui(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
-        header = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], height=60, corner_radius=0, border_width=0)
+
+        # Enhanced Header
+        header = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], height=65, corner_radius=0, border_width=0)
         header.grid(row=0, column=0, sticky="ew")
-        ctk.CTkLabel(header, text=f"⚡ AUTOPOST V{__version__}", font=FONT_HEADER, text_color=COLORS["primary"]).pack(
-            side="left", padx=20, pady=15)
+
+        # Bottom border for header
+        header_border = ctk.CTkFrame(self, fg_color=COLORS["border"], height=1, corner_radius=0)
+        header_border.grid(row=0, column=0, sticky="sew")
+
+        title_frame = ctk.CTkFrame(header, fg_color="transparent")
+        title_frame.pack(side="left", padx=25, pady=15)
+
+        ctk.CTkLabel(title_frame, text="⚡", font=("Segoe UI Emoji", 22)).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(title_frame, text="AUTOPOST", font=FONT_HEADER, text_color=COLORS["text_main"]).pack(side="left")
+        ctk.CTkLabel(title_frame, text=f" v{__version__}", font=("Roboto", 14, "bold"),
+                     text_color=COLORS["primary"]).pack(side="left", padx=(5, 0), pady=(4, 0))
+
         self.status_badge = ctk.CTkLabel(header, text="● IDLE", font=("Roboto", 13, "bold"),
                                          text_color=COLORS["text_sub"])
-        self.status_badge.pack(side="right", padx=20)
+        self.status_badge.pack(side="right", padx=30)
+
+        # Main Layout
         main_content = ctk.CTkFrame(self, fg_color="transparent")
-        main_content.grid(row=1, column=0, sticky="nsew", padx=15, pady=15)
+        main_content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         main_content.grid_rowconfigure(0, weight=1)
         main_content.grid_columnconfigure(0, weight=1)
 
-        self.tabview = ctk.CTkTabview(main_content, fg_color=COLORS["bg_main"], corner_radius=12,
+        self.tabview = ctk.CTkTabview(main_content, fg_color=COLORS["bg_card"], corner_radius=12,
                                       segmented_button_selected_color=COLORS["primary"],
-                                      segmented_button_selected_hover_color="#2563EB",
-                                      segmented_button_unselected_color=COLORS["bg_card"],
-                                      segmented_button_unselected_hover_color=COLORS["bg_lighter"],
+                                      segmented_button_selected_hover_color=COLORS["primary_hover"],
+                                      segmented_button_unselected_color=COLORS["bg_lighter"],
+                                      segmented_button_unselected_hover_color=COLORS["border"],
+                                      text_color=COLORS["text_main"],
                                       command=self.on_tab_change)
         self.tabview.grid(row=0, column=0, sticky="nsew")
 
@@ -302,83 +337,96 @@ class FacebookAutomationGUI(ctk.CTk):
     def setup_dashboard(self):
         self.tab_dash.grid_columnconfigure(1, weight=1)
         self.tab_dash.grid_rowconfigure(0, weight=1)
-        left_panel = ctk.CTkScrollableFrame(self.tab_dash, fg_color="transparent", width=350)
-        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        self.overall_stats = StatsFrame(left_panel)
-        self.overall_stats.pack(fill="x", pady=(0, 15))
 
-        control_frame = ctk.CTkFrame(left_panel, fg_color=COLORS["bg_card"], corner_radius=15, border_width=1,
+        # Left Panel (Settings & Stats)
+        left_panel = ctk.CTkScrollableFrame(self.tab_dash, fg_color="transparent", width=380)
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 15))
+
+        self.overall_stats = StatsFrame(left_panel)
+        self.overall_stats.pack(fill="x", pady=(5, 20))
+
+        control_frame = ctk.CTkFrame(left_panel, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                                      border_color=COLORS["border"])
         control_frame.pack(fill="x", pady=(0, 10))
-        ctk.CTkLabel(control_frame, text="⚙️ ACTIONS", font=("Roboto", 12, "bold"),
+
+        ctk.CTkLabel(control_frame, text="⚙️ CONFIGURATION", font=("Roboto", 13, "bold"),
                      text_color=COLORS["text_main"]).pack(anchor="w", padx=15, pady=(15, 10))
 
-        lbl_cookies = ctk.CTkLabel(control_frame, text="Cookie File Path:", font=("Roboto", 11, "bold"),
+        lbl_cookies = ctk.CTkLabel(control_frame, text="Cookie Source File:", font=("Roboto", 12),
                                    text_color=COLORS["text_sub"])
         lbl_cookies.pack(anchor="w", padx=15, pady=(5, 0))
+
         cookie_row = ctk.CTkFrame(control_frame, fg_color="transparent")
-        cookie_row.pack(fill="x", padx=15, pady=(0, 15))
-        self.cookie_entry = ctk.CTkEntry(cookie_row, height=35, placeholder_text="Path to cookies.txt", corner_radius=8)
+        cookie_row.pack(fill="x", padx=15, pady=(5, 15))
+        self.cookie_entry = ctk.CTkEntry(cookie_row, height=38, placeholder_text="Select cookies.txt...",
+                                         corner_radius=6, border_color=COLORS["border"], fg_color=COLORS["bg_main"])
         self.cookie_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.cookie_entry.insert(0, self.global_cookie_path)
-        btn_browse = ctk.CTkButton(cookie_row, text="📂", width=45, height=35, fg_color=COLORS["bg_lighter"],
+        btn_browse = ctk.CTkButton(cookie_row, text="📂", width=45, height=38, fg_color=COLORS["bg_lighter"],
                                    hover_color=COLORS["primary"], border_width=1, border_color=COLORS["border"],
-                                   corner_radius=8, command=self.browse_global_cookie)
+                                   corner_radius=6, command=self.browse_global_cookie)
         btn_browse.pack(side="right")
 
-        self.fast_mode_switch = ctk.CTkSwitch(control_frame, text="⚡ Fast Mode",
-                                              variable=self.fast_mode_var, font=("Roboto", 12, "bold"),
-                                              text_color=COLORS["warning"])
-        self.fast_mode_switch.pack(anchor="w", padx=15, pady=(5, 10))
+        self.fast_mode_switch = ctk.CTkSwitch(control_frame, text="⚡ Enable Fast Mode (Block Media)",
+                                              variable=self.fast_mode_var, font=("Roboto", 12),
+                                              progress_color=COLORS["primary"], button_color=COLORS["text_main"])
+        self.fast_mode_switch.pack(anchor="w", padx=15, pady=(5, 15))
 
+        lbl_delay = ctk.CTkLabel(control_frame, text="Pre / Post Action Delay (Seconds):", font=("Roboto", 12),
+                                 text_color=COLORS["text_sub"])
+        lbl_delay.pack(anchor="w", padx=15, pady=(0, 5))
+        delay_row = ctk.CTkFrame(control_frame, fg_color="transparent")
+        delay_row.pack(fill="x", padx=15, pady=(0, 20))
+        self.dash_pre_delay = ctk.CTkEntry(delay_row, width=80, height=36, justify="center", corner_radius=6,
+                                           fg_color=COLORS["bg_main"], border_color=COLORS["border"])
+        self.dash_pre_delay.pack(side="left", padx=(0, 10))
+        self.dash_pre_delay.insert(0, "10")
+        ctk.CTkLabel(delay_row, text="-", font=("Roboto", 16, "bold"), text_color=COLORS["text_sub"]).pack(side="left")
+        self.dash_post_delay = ctk.CTkEntry(delay_row, width=80, height=36, justify="center", corner_radius=6,
+                                            fg_color=COLORS["bg_main"], border_color=COLORS["border"])
+        self.dash_post_delay.pack(side="left", padx=(10, 0))
+        self.dash_post_delay.insert(0, "10")
+
+        # Action Buttons
         btn_grid = ctk.CTkFrame(control_frame, fg_color="transparent")
-        btn_grid.pack(fill="x", padx=15, pady=5)
-        self.start_btn = ctk.CTkButton(btn_grid, text="▶ START", height=45, fg_color=COLORS["success"],
-                                       hover_color="#059669", font=("Roboto", 14, "bold"), corner_radius=8,
+        btn_grid.pack(fill="x", padx=15, pady=(5, 15))
+        self.start_btn = ctk.CTkButton(btn_grid, text="▶ START ENGINE", height=45, fg_color=COLORS["success"],
+                                       hover_color="#047857", font=FONT_BOLD, corner_radius=8,
                                        command=self.start_threads)
         self.start_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.stop_btn = ctk.CTkButton(btn_grid, text="⏹ STOP", height=45, fg_color=COLORS["danger"],
-                                      hover_color="#DC2626", font=("Roboto", 14, "bold"), state="disabled",
-                                      corner_radius=8,
-                                      command=self.stop_automation)
+                                      hover_color="#BE123C", font=FONT_BOLD, state="disabled",
+                                      corner_radius=8, command=self.stop_automation)
         self.stop_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
-        lbl_delay = ctk.CTkLabel(control_frame, text="Pre/Post Action Delay (s)", font=("Roboto", 11, "bold"),
-                                 text_color=COLORS["text_sub"])
-        lbl_delay.pack(anchor="w", padx=15, pady=(10, 0))
-        delay_row = ctk.CTkFrame(control_frame, fg_color="transparent")
-        delay_row.pack(fill="x", padx=15, pady=(0, 15))
-        self.dash_pre_delay = ctk.CTkEntry(delay_row, width=70, height=32, justify="center", corner_radius=8)
-        self.dash_pre_delay.pack(side="left", padx=(0, 5))
-        self.dash_pre_delay.insert(0, "10")
-        ctk.CTkLabel(delay_row, text="/", font=("Roboto", 16, "bold"), text_color=COLORS["text_sub"]).pack(side="left")
-        self.dash_post_delay = ctk.CTkEntry(delay_row, width=70, height=32, justify="center", corner_radius=8)
-        self.dash_post_delay.pack(side="left", padx=(5, 0))
-        self.dash_post_delay.insert(0, "10")
-
-        ctk.CTkButton(control_frame, text="💾 Save Configuration", height=35, fg_color="transparent",
+        # Utility Buttons
+        ctk.CTkButton(control_frame, text="💾 Save Configuration", height=36, fg_color="transparent",
                       border_width=1, border_color=COLORS["primary"], text_color=COLORS["primary"], font=FONT_BODY,
-                      corner_radius=8, hover_color=COLORS["bg_lighter"],
-                      command=self.save_config).pack(fill="x", padx=15, pady=(5, 5))
+                      corner_radius=6, hover_color=COLORS["bg_lighter"],
+                      command=self.save_config).pack(fill="x", padx=15, pady=5)
 
-        ctk.CTkButton(control_frame, text="🔄 Check for Updates", height=35, fg_color="transparent",
+        ctk.CTkButton(control_frame, text="🔄 Check for Updates", height=36, fg_color="transparent",
                       border_width=1, border_color=COLORS["warning"], text_color=COLORS["warning"], font=FONT_BODY,
-                      corner_radius=8, hover_color=COLORS["bg_lighter"],
-                      command=lambda: self.check_for_updates(manual=True)).pack(fill="x", padx=15, pady=(5, 5))
+                      corner_radius=6, hover_color=COLORS["bg_lighter"],
+                      command=lambda: self.check_for_updates(manual=True)).pack(fill="x", padx=15, pady=5)
 
-        ctk.CTkButton(control_frame, text="🗑 Clear Share History", height=35, fg_color="transparent",
+        ctk.CTkButton(control_frame, text="🗑 Clear Share History", height=36, fg_color="transparent",
                       border_width=1, border_color=COLORS["danger"], text_color=COLORS["danger"], font=FONT_BODY,
-                      corner_radius=8, hover_color=COLORS["bg_lighter"],
+                      corner_radius=6, hover_color=COLORS["bg_lighter"],
                       command=self.clear_share_history).pack(fill="x", padx=15, pady=(5, 20))
 
+        # Right Panel (Tasks)
         right_panel = ctk.CTkFrame(self.tab_dash, fg_color="transparent")
         right_panel.grid(row=0, column=1, sticky="nsew")
-        header = ctk.CTkFrame(right_panel, fg_color="transparent")
-        header.pack(fill="x", padx=5, pady=5)
-        ctk.CTkLabel(header, text="📋 TASKS", font=FONT_SUBHEADER, text_color=COLORS["text_main"]).pack(side="left")
-        ctk.CTkButton(header, text="+ Add Link", width=100, height=32, fg_color=COLORS["primary"],
-                      font=("Roboto", 12, "bold"),
-                      corner_radius=8, hover_color="#2563EB", command=self.add_pair).pack(side="right")
+
+        header_task = ctk.CTkFrame(right_panel, fg_color="transparent")
+        header_task.pack(fill="x", padx=5, pady=5)
+        ctk.CTkLabel(header_task, text="📋 TASK QUEUE", font=FONT_SUBHEADER, text_color=COLORS["text_main"]).pack(
+            side="left")
+        ctk.CTkButton(header_task, text="+ Add Link", width=110, height=32, fg_color=COLORS["primary"],
+                      hover_color=COLORS["primary_hover"], font=FONT_BOLD, corner_radius=6,
+                      command=self.add_pair).pack(side="right")
+
         self.pairs_scroll = ctk.CTkScrollableFrame(right_panel, fg_color="transparent")
         self.pairs_scroll.pack(fill="both", expand=True, padx=0, pady=5)
         self.add_pair()
@@ -399,62 +447,78 @@ class FacebookAutomationGUI(ctk.CTk):
     def setup_logs(self):
         self.tab_logs.grid_columnconfigure(0, weight=1)
         self.tab_logs.grid_rowconfigure(2, weight=1)
-        top_bar = ctk.CTkFrame(self.tab_logs, fg_color="transparent", height=40)
-        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5))
-        ctk.CTkLabel(top_bar, text="VIEWING LOGS:", font=FONT_SUBHEADER).pack(side="left", padx=(0, 10))
-        self.log_shares_label = ctk.CTkLabel(top_bar, text="✅ SHARES: 0", font=("Roboto", 13, "bold"),
-                                             text_color=COLORS["success"])
+
+        top_bar = ctk.CTkFrame(self.tab_logs, fg_color="transparent", height=45)
+        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(top_bar, text="LIVE LOGS", font=FONT_SUBHEADER, text_color=COLORS["text_sub"]).pack(side="left",
+                                                                                                         padx=(0, 20))
+
+        self.log_shares_label = ctk.CTkLabel(top_bar, text="✅ SHARES: 0", font=FONT_BOLD, text_color=COLORS["success"])
         self.log_shares_label.pack(side="left", padx=(0, 15))
-        self.log_failed_label = ctk.CTkLabel(top_bar, text="⚠️ FAILED: 0", font=("Roboto", 13, "bold"),
-                                             text_color=COLORS["warning"])
+
+        self.log_failed_label = ctk.CTkLabel(top_bar, text="⚠️ FAILED: 0", font=FONT_BOLD, text_color=COLORS["warning"])
         self.log_failed_label.pack(side="left", padx=(0, 15))
 
-        self.log_expired_label = ctk.CTkLabel(top_bar, text="❌ EXPIRED: 0", font=("Roboto", 13, "bold"),
-                                              text_color=COLORS["danger"])
+        self.log_expired_label = ctk.CTkLabel(top_bar, text="❌ EXPIRED: 0", font=FONT_BOLD, text_color=COLORS["danger"])
         self.log_expired_label.pack(side="left", padx=(0, 15))
 
-        self.log_cookies_label = ctk.CTkLabel(top_bar, text="🍪 COOKIES: 0", font=("Roboto", 13, "bold"),
+        self.log_cookies_label = ctk.CTkLabel(top_bar, text="🍪 COOKIES: 0", font=FONT_BOLD,
                                               text_color=COLORS["primary"])
         self.log_cookies_label.pack(side="left", padx=(0, 15))
-        self.log_threads_label = ctk.CTkLabel(top_bar, text="💻 ACTIVE THREADS: 0", font=("Roboto", 13, "bold"),
-                                              text_color=COLORS["warning"])
-        self.log_threads_label.pack(side="left", padx=(0, 15))
+
         self.logs_stop_btn = ctk.CTkButton(top_bar, text="⏹ STOP", width=90, height=32, fg_color=COLORS["danger"],
-                                           hover_color="#DC2626", state="disabled", corner_radius=8,
+                                           hover_color="#BE123C", font=FONT_BOLD, state="disabled", corner_radius=6,
                                            command=self.stop_automation)
         self.logs_stop_btn.pack(side="right", padx=(0, 5))
+
         ctk.CTkButton(top_bar, text="🗑 Clear", width=90, height=32, fg_color="transparent", border_width=1,
-                      border_color=COLORS["border"], hover_color=COLORS["bg_lighter"], corner_radius=8,
+                      border_color=COLORS["border"], hover_color=COLORS["bg_lighter"], corner_radius=6,
                       command=self.clear_logs).pack(side="right", padx=(0, 10))
+
         progress_frame = ctk.CTkFrame(self.tab_logs, fg_color="transparent")
-        progress_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0 / 0 Accounts", font=("Roboto", 12, "bold"),
+        progress_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 10))
+
+        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0 / 0 Accounts", font=FONT_BODY,
                                            text_color=COLORS["text_sub"])
         self.progress_label.pack(side="left", padx=(0, 15))
+
         self.progress_bar = ctk.CTkProgressBar(progress_frame, fg_color=COLORS["bg_card"],
-                                               progress_color=COLORS["primary"], height=12)
+                                               progress_color=COLORS["primary"], height=10, corner_radius=5)
         self.progress_bar.pack(side="left", fill="x", expand=True)
         self.progress_bar.set(0)
-        logs_container = ctk.CTkFrame(self.tab_logs, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
+
+        logs_container = ctk.CTkFrame(self.tab_logs, fg_color=COLORS["bg_main"], corner_radius=12, border_width=1,
                                       border_color=COLORS["border"])
         logs_container.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         logs_container.grid_columnconfigure(0, weight=1)
         logs_container.grid_rowconfigure(0, weight=1)
 
+        # --- Custom Treeview Styling for Dark Mode ---
         style = ttk.Style()
         style.theme_use("default")
-        style.configure("Treeview", background=COLORS["bg_card"], foreground=COLORS["text_main"],
-                        fieldbackground=COLORS["bg_card"], borderwidth=0, rowheight=30, font=("Roboto", 11))
+        style.configure("Treeview",
+                        background=COLORS["bg_main"],
+                        foreground=COLORS["text_main"],
+                        fieldbackground=COLORS["bg_main"],
+                        borderwidth=0,
+                        rowheight=35,
+                        font=("Roboto", 11))
         style.map('Treeview', background=[('selected', COLORS["bg_lighter"])])
-        style.configure("Treeview.Heading", background=COLORS["bg_main"], foreground=COLORS["text_sub"],
-                        font=("Roboto", 11, "bold"), borderwidth=0, padding=(0, 8))
+        style.configure("Treeview.Heading",
+                        background=COLORS["bg_card"],
+                        foreground=COLORS["text_sub"],
+                        font=("Roboto", 11, "bold"),
+                        borderwidth=0,
+                        padding=(0, 10))
 
         tree_f1 = ctk.CTkFrame(logs_container, corner_radius=12, fg_color="transparent")
         tree_f1.pack(fill="both", expand=True, padx=2, pady=2)
+
         cols1 = ("Time", "Worker", "Link", "Caption", "Status")
         self.table_auto = ttk.Treeview(tree_f1, columns=cols1, show="headings", height=8)
         self.table_auto.heading("Time", text="TIME", anchor="center")
-        self.table_auto.column("Time", width=100, anchor="center")
+        self.table_auto.column("Time", width=120, anchor="center")
         self.table_auto.heading("Worker", text="WORKER", anchor="center")
         self.table_auto.column("Worker", width=100, anchor="center")
         self.table_auto.heading("Link", text="LINK", anchor="center")
@@ -463,22 +527,24 @@ class FacebookAutomationGUI(ctk.CTk):
         self.table_auto.column("Caption", width=250, anchor="center")
         self.table_auto.heading("Status", text="STATUS", anchor="center")
         self.table_auto.column("Status", width=300, anchor="center")
+
         sb1 = ctk.CTkScrollbar(tree_f1, command=self.table_auto.yview)
         self.table_auto.configure(yscrollcommand=sb1.set)
         sb1.pack(side="right", fill="y", pady=5)
         self.table_auto.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+
         self.table_auto.tag_configure("SUCCESS", foreground=COLORS["success"])
         self.table_auto.tag_configure("ERROR", foreground=COLORS["danger"])
         self.table_auto.tag_configure("WARN", foreground=COLORS["warning"])
+        self.table_auto.tag_configure("INFO", foreground=COLORS["primary"])
         self.table_auto.bind("<Double-1>", self.on_log_double_click)
 
-    # <--- REDESIGNED EXPIRED COOKIES TAB --->
     def setup_expired_cookies(self):
         self.tab_expired.grid_columnconfigure(0, weight=1)
         self.tab_expired.grid_rowconfigure(1, weight=1)
 
         # Header Card para modern ang look
-        header_card = ctk.CTkFrame(self.tab_expired, fg_color=COLORS["bg_card"], corner_radius=15, border_width=1,
+        header_card = ctk.CTkFrame(self.tab_expired, fg_color=COLORS["bg_card"], corner_radius=12, border_width=1,
                                    border_color=COLORS["border"])
         header_card.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
 
@@ -490,25 +556,25 @@ class FacebookAutomationGUI(ctk.CTk):
         text_frame.pack(side="left")
         ctk.CTkLabel(text_frame, text="EXPIRED ACCOUNTS", font=FONT_SUBHEADER, text_color=COLORS["danger"]).pack(
             anchor="w")
-        self.lbl_total_expired_tab = ctk.CTkLabel(text_frame, text="Total: 0", font=("Roboto", 12),
+        self.lbl_total_expired_tab = ctk.CTkLabel(text_frame, text="Total Detected: 0", font=FONT_BODY,
                                                   text_color=COLORS["text_sub"])
         self.lbl_total_expired_tab.pack(anchor="w")
 
         btn_frame = ctk.CTkFrame(header_card, fg_color="transparent")
         btn_frame.pack(side="right", padx=20, pady=15)
 
-        ctk.CTkButton(btn_frame, text="🗑 Clear All", width=100, height=35, fg_color="transparent", border_width=1,
-                      border_color=COLORS["danger"], text_color=COLORS["danger"], hover_color="#B91C1C",
-                      corner_radius=8, command=self.clear_expired).pack(side="right", padx=(5, 0))
-        ctk.CTkButton(btn_frame, text="📋 Copy All", width=100, height=35, fg_color=COLORS["success"],
-                      hover_color="#059669", corner_radius=8, command=self.copy_all_expired).pack(side="right",
-                                                                                                  padx=(5, 5))
-        ctk.CTkButton(btn_frame, text="📋 Copy Selected", width=120, height=35, fg_color=COLORS["primary"],
-                      hover_color="#2563EB", corner_radius=8, command=self.copy_selected_expired).pack(side="right",
-                                                                                                       padx=(0, 5))
+        ctk.CTkButton(btn_frame, text="🗑 Clear All", width=100, height=36, fg_color="transparent", border_width=1,
+                      border_color=COLORS["danger"], text_color=COLORS["danger"], hover_color="#BE123C",
+                      corner_radius=6, command=self.clear_expired).pack(side="right", padx=(10, 0))
+        ctk.CTkButton(btn_frame, text="📋 Copy All", width=100, height=36, fg_color=COLORS["success"],
+                      hover_color="#047857", font=FONT_BOLD, corner_radius=6, command=self.copy_all_expired).pack(
+            side="right", padx=(10, 0))
+        ctk.CTkButton(btn_frame, text="📋 Copy Selected", width=130, height=36, fg_color=COLORS["primary"],
+                      hover_color=COLORS["primary_hover"], font=FONT_BOLD, corner_radius=6,
+                      command=self.copy_selected_expired).pack(side="right", padx=(0, 0))
 
         # Styled Table Container
-        tree_frame = ctk.CTkFrame(self.tab_expired, corner_radius=15, fg_color=COLORS["bg_card"], border_width=1,
+        tree_frame = ctk.CTkFrame(self.tab_expired, corner_radius=12, fg_color=COLORS["bg_main"], border_width=1,
                                   border_color=COLORS["border"])
         tree_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
         tree_frame.grid_columnconfigure(0, weight=1)
@@ -517,7 +583,7 @@ class FacebookAutomationGUI(ctk.CTk):
         cols = ("No", "Profile Link")
         self.table_expired = ttk.Treeview(tree_frame, columns=cols, show="headings", height=15)
         self.table_expired.heading("No", text="NO.", anchor="center")
-        self.table_expired.column("No", width=50, anchor="center", stretch=False)
+        self.table_expired.column("No", width=80, anchor="center", stretch=False)
         self.table_expired.heading("Profile Link", text="PROFILE LINK (Double click to open)", anchor="w")
         self.table_expired.column("Profile Link", width=800, anchor="w")
 
@@ -531,18 +597,18 @@ class FacebookAutomationGUI(ctk.CTk):
     def add_expired_to_tree(self, link):
         idx = len(self.table_expired.get_children()) + 1
         self.table_expired.insert("", "end", values=(idx, link))
-        self.lbl_total_expired_tab.configure(text=f"Total: {idx}")
+        self.lbl_total_expired_tab.configure(text=f"Total Detected: {idx}")
 
     def clear_expired(self):
-        ans = messagebox.askyesno("Clear",
-                                  "Are you sure you want to clear the expired accounts list? \n\n(This allows the system to detect these accounts again on the next run)")
+        ans = messagebox.askyesno("Clear List",
+                                  "Clear the expired accounts list?\n\n(The system will re-detect these accounts on the next run.)")
         if ans:
             for item in self.table_expired.get_children():
                 self.table_expired.delete(item)
             with self.stats_lock:
                 self.expired_accounts.clear()
                 self.expired_count = 0
-            self.lbl_total_expired_tab.configure(text="Total: 0")
+            self.lbl_total_expired_tab.configure(text="Total Detected: 0")
             self.update_stats()
 
     def copy_selected_expired(self):
@@ -554,7 +620,6 @@ class FacebookAutomationGUI(ctk.CTk):
         self.clipboard_clear()
         self.clipboard_append(link)
         self.update()
-        messagebox.showinfo("Copied", "Selected profile link copied to clipboard!")
 
     def copy_all_expired(self):
         items = self.table_expired.get_children()
@@ -565,7 +630,7 @@ class FacebookAutomationGUI(ctk.CTk):
         self.clipboard_clear()
         self.clipboard_append("\n".join(links))
         self.update()
-        messagebox.showinfo("Copied", f"Copied {len(links)} profile links to clipboard!")
+        messagebox.showinfo("Copied", f"Copied {len(links)} links to clipboard!")
 
     def on_expired_double_click(self, event):
         try:
@@ -579,27 +644,27 @@ class FacebookAutomationGUI(ctk.CTk):
     def setup_saved_profiles(self):
         self.tab_saved.grid_columnconfigure(0, weight=1)
         self.tab_saved.grid_rowconfigure(1, weight=1)
-        top_bar = ctk.CTkFrame(self.tab_saved, fg_color="transparent", height=40)
-        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5))
-        ctk.CTkLabel(top_bar, text="📁 SAVED SESSIONS", font=FONT_SUBHEADER).pack(side="left", padx=(0, 10))
 
-        # Total Saved Sessions Label
-        self.lbl_total_saved = ctk.CTkLabel(top_bar, text="Total: 0", font=("Roboto", 13, "bold"),
-                                            text_color=COLORS["success"])
+        top_bar = ctk.CTkFrame(self.tab_saved, fg_color="transparent", height=45)
+        top_bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(top_bar, text="📁 SAVED SESSIONS", font=FONT_SUBHEADER, text_color=COLORS["text_main"]).pack(
+            side="left", padx=(0, 10))
+        self.lbl_total_saved = ctk.CTkLabel(top_bar, text="Total: 0", font=FONT_BOLD, text_color=COLORS["primary"])
         self.lbl_total_saved.pack(side="left", padx=(10, 0))
 
-        ctk.CTkButton(top_bar, text="🔄 Refresh List", width=120, height=32, corner_radius=8,
-                      command=self.populate_saved_profiles).pack(side="right", padx=(0, 5))
+        ctk.CTkButton(top_bar, text="🔄 Refresh", width=100, height=36, corner_radius=6, fg_color=COLORS["bg_lighter"],
+                      hover_color=COLORS["border"], border_width=1, border_color=COLORS["border"],
+                      text_color=COLORS["text_main"], command=self.populate_saved_profiles).pack(side="right",
+                                                                                                 padx=(0, 5))
+        ctk.CTkButton(top_bar, text="🗑 Delete All", width=100, height=36, fg_color=COLORS["danger"],
+                      hover_color="#BE123C", font=FONT_BOLD, corner_radius=6, command=self.delete_all_profiles).pack(
+            side="right", padx=(0, 10))
+        ctk.CTkButton(top_bar, text="📋 Copy All", width=100, height=36, fg_color=COLORS["success"],
+                      hover_color="#047857", font=FONT_BOLD, corner_radius=6, command=self.copy_all_profiles).pack(
+            side="right", padx=(0, 10))
 
-        ctk.CTkButton(top_bar, text="🗑 Delete All", width=100, height=32, fg_color=COLORS["danger"],
-                      hover_color="#B91C1C", corner_radius=8,
-                      command=self.delete_all_profiles).pack(side="right", padx=(0, 10))
-
-        ctk.CTkButton(top_bar, text="📋 Copy All", width=100, height=32, fg_color=COLORS["success"],
-                      hover_color="#059669", corner_radius=8,
-                      command=self.copy_all_profiles).pack(side="right", padx=(0, 10))
-
-        self.profiles_scroll = ctk.CTkScrollableFrame(self.tab_saved, fg_color=COLORS["bg_main"])
+        self.profiles_scroll = ctk.CTkScrollableFrame(self.tab_saved, fg_color="transparent")
         self.profiles_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         self.populate_saved_profiles()
 
@@ -614,41 +679,41 @@ class FacebookAutomationGUI(ctk.CTk):
             count = len(uids)
             if not uids:
                 ctk.CTkLabel(self.profiles_scroll, text="No saved profiles or cookies yet.", font=FONT_BODY,
-                             text_color=COLORS["text_sub"]).pack(pady=30)
+                             text_color=COLORS["text_sub"]).pack(pady=40)
             else:
                 for i, uid in enumerate(uids):
                     self.create_profile_row(i + 1, uid)
         else:
             ctk.CTkLabel(self.profiles_scroll, text="No saved profiles or cookies yet.", font=FONT_BODY,
-                         text_color=COLORS["text_sub"]).pack(pady=30)
+                         text_color=COLORS["text_sub"]).pack(pady=40)
 
-        # Update Total Label
         if hasattr(self, 'lbl_total_saved'):
             self.lbl_total_saved.configure(text=f"Total: {count}")
 
     def create_profile_row(self, index, uid):
-        row = ctk.CTkFrame(self.profiles_scroll, fg_color=COLORS["bg_card"], corner_radius=8, border_width=1,
+        row = ctk.CTkFrame(self.profiles_scroll, fg_color=COLORS["bg_card"], corner_radius=10, border_width=1,
                            border_color=COLORS["border"])
-        row.pack(fill="x", pady=5, padx=5)
-        lbl_idx = ctk.CTkLabel(row, text=f"{index}.", width=30, font=("Roboto", 13, "bold"),
-                               text_color=COLORS["text_sub"])
-        lbl_idx.pack(side="left", padx=(10, 5), pady=10)
+        row.pack(fill="x", pady=6, padx=5)
+
+        lbl_idx = ctk.CTkLabel(row, text=f"{index}.", width=40, font=FONT_BOLD, text_color=COLORS["text_sub"])
+        lbl_idx.pack(side="left", padx=(10, 5), pady=12)
+
         fb_link = f"https://www.facebook.com/{uid}"
         lbl_link = ctk.CTkLabel(row, text=fb_link, font=("Roboto", 13, "underline"), text_color=COLORS["primary"],
                                 cursor="hand2")
-        lbl_link.pack(side="left", padx=10, pady=10)
+        lbl_link.pack(side="left", padx=10, pady=12)
         lbl_link.bind("<Double-1>", lambda e, url=fb_link: webbrowser.open(url))
-        ctk.CTkLabel(row, text="(Double-click to open)", font=("Roboto", 10, "italic"),
-                     text_color=COLORS["text_sub"]).pack(side="left", padx=(0, 10))
-        btn_copy = ctk.CTkButton(row, text="📋 Copy URL", width=90, height=28, fg_color=COLORS["bg_lighter"],
+
+        btn_copy = ctk.CTkButton(row, text="📋 Copy", width=80, height=30, fg_color=COLORS["bg_lighter"],
                                  hover_color=COLORS["primary"], corner_radius=6, text_color=COLORS["text_main"],
                                  command=lambda u=fb_link: self.copy_to_clipboard(u))
-        btn_copy.pack(side="right", padx=(5, 10), pady=10)
-        btn_del = ctk.CTkButton(row, text="🗑 Delete Data", width=90, height=28, fg_color="transparent", border_width=1,
-                                border_color=COLORS["danger"],
-                                text_color=COLORS["danger"], hover_color=COLORS["danger"], corner_radius=6,
+        btn_copy.pack(side="right", padx=(5, 15), pady=12)
+
+        btn_del = ctk.CTkButton(row, text="🗑 Delete", width=80, height=30, fg_color="transparent", border_width=1,
+                                border_color=COLORS["danger"], text_color=COLORS["danger"],
+                                hover_color=COLORS["danger"], corner_radius=6,
                                 command=lambda r=row, u=uid: self.delete_profile(r, u))
-        btn_del.pack(side="right", padx=5, pady=10)
+        btn_del.pack(side="right", padx=5, pady=12)
 
     def copy_to_clipboard(self, text):
         self.clipboard_clear()
@@ -658,16 +723,13 @@ class FacebookAutomationGUI(ctk.CTk):
     def copy_all_profiles(self):
         profiles_dir = os.path.join(os.getcwd(), "profiles")
         if not os.path.exists(profiles_dir):
-            messagebox.showinfo("Info", "No saved profiles to copy.")
             return
         uids = [d for d in os.listdir(profiles_dir) if os.path.isdir(os.path.join(profiles_dir, d))]
         if not uids:
-            messagebox.showinfo("Info", "No saved profiles to copy.")
             return
         links = [f"https://www.facebook.com/{uid}" for uid in uids]
-        all_links_str = "\n".join(links)
         self.clipboard_clear()
-        self.clipboard_append(all_links_str)
+        self.clipboard_append("\n".join(links))
         self.update()
         messagebox.showinfo("Copied", f"Copied {len(links)} links to clipboard!")
 
@@ -678,16 +740,13 @@ class FacebookAutomationGUI(ctk.CTk):
                 shutil.rmtree(prof_path)
             row_widget.destroy()
             self.overall_stats.update_cookies(max(0, int(self.overall_stats.card_cookies.value_var.get()) - 1))
-
-            current_text = self.lbl_total_saved.cget("text")
-            current_count = int(current_text.split(": ")[1])
+            current_count = int(self.lbl_total_saved.cget("text").split(": ")[1])
             self.lbl_total_saved.configure(text=f"Total: {max(0, current_count - 1)}")
-
         except Exception as e:
-            messagebox.showerror("Error", f"Cannot delete the profile folder:\n{e}")
+            messagebox.showerror("Error", f"Cannot delete folder:\n{e}")
 
     def delete_all_profiles(self):
-        response = messagebox.askyesno("Delete All", "Are you sure you want to delete ALL saved profiles?")
+        response = messagebox.askyesno("Delete All", "Delete ALL saved profiles?")
         if response:
             profiles_dir = os.path.join(os.getcwd(), "profiles")
             if os.path.exists(profiles_dir):
@@ -695,7 +754,7 @@ class FacebookAutomationGUI(ctk.CTk):
                     shutil.rmtree(profiles_dir)
                     os.makedirs(profiles_dir, exist_ok=True)
                 except Exception as e:
-                    messagebox.showerror("Error", f"Error deleting some folders:\n{e}")
+                    pass
             self.populate_saved_profiles()
             self.overall_stats.update_cookies(0)
 
@@ -933,8 +992,7 @@ class FacebookAutomationGUI(ctk.CTk):
                                     cookies = self.parse_playwright_cookies(cookie_str)
                                     if cookies:
                                         context.add_cookies(cookies)
-                                    self.log_row(worker_id, "---", "---", f"INJECTED COOKIE (Acc {acc_idx})",
-                                                 "INFO")
+                                    self.log_row(worker_id, "---", "---", f"INJECTED COOKIE (Acc {acc_idx})", "INFO")
                                 else:
                                     self.log_row(worker_id, "---", "---", f"USING SAVED SESSION (Acc {acc_idx})",
                                                  "SUCCESS")
@@ -960,7 +1018,6 @@ class FacebookAutomationGUI(ctk.CTk):
                             except PlaywrightTimeoutError:
                                 fb_profile_link = f"https://www.facebook.com/{acc_id}"
 
-                                # PAG-ADD SA TRACKER AT SA EXPIRED TAB
                                 with self.stats_lock:
                                     if acc_id not in self.expired_accounts:
                                         self.expired_accounts.add(acc_id)
@@ -1031,7 +1088,6 @@ class FacebookAutomationGUI(ctk.CTk):
                             time.sleep(2)
                         except Exception as e:
                             err_str = str(e).replace('\n', ' ')
-                            traceback.print_exc()
                             self.log_row(worker_id, link, sel_cap, f"ERR: {err_str[:40]}", "ERROR")
                             with self.stats_lock:
                                 self.error_count += 1
@@ -1040,7 +1096,6 @@ class FacebookAutomationGUI(ctk.CTk):
                         link_idx += 1
                 except Exception as e:
                     self.log_row(worker_id, "---", "---", f"FATAL WORKER ERR: {str(e)[:30]}", "ERROR")
-                    traceback.print_exc()
                     with self.stats_lock:
                         self.error_count += 1
                         self.total_attempts += 1
@@ -1085,7 +1140,7 @@ class FacebookAutomationGUI(ctk.CTk):
             messagebox.showerror("Error", "No links configured!")
             return
         if not os.path.exists(self.cookie_entry.get()):
-            messagebox.showerror("Error", "Invalid Cookie File!")
+            messagebox.showerror("Error", "Invalid Cookie File Path!")
             return
         try:
             with open(self.cookie_entry.get(), "r") as f:
@@ -1098,7 +1153,7 @@ class FacebookAutomationGUI(ctk.CTk):
             self.update_progress_ui(0, self.total_accounts_to_process)
         except Exception as e:
             traceback.print_exc()
-            messagebox.showerror("Error", "Cookie file empty/error!")
+            messagebox.showerror("Error", "Cookie file is empty or cannot be read!")
             return
         self._launch_workers(ac)
 
@@ -1146,7 +1201,7 @@ class FacebookAutomationGUI(ctk.CTk):
     def stop_automation(self):
         self.is_running = False
         self.stop_btn.configure(state="disabled")
-        self.status_badge.configure(text="● STOPPING...", text_color=COLORS["danger"])
+        self.status_badge.configure(text="● STOPPING...", text_color=COLORS["warning"])
         with self.cookie_queue.mutex:
             self.cookie_queue.queue.clear()
 
@@ -1155,7 +1210,7 @@ class FacebookAutomationGUI(ctk.CTk):
                 try:
                     b.close()
                 except Exception as e:
-                    traceback.print_exc()
+                    pass
             self.active_browsers = []
             self.after(0, lambda: messagebox.showinfo("Stopped", "Automation Force Stopped."))
             self.after(0, self.populate_saved_profiles)
