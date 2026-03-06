@@ -265,7 +265,11 @@ class FacebookAutomationGUI(ctk.CTk):
         self.share_history = self.load_share_history()
         self.layout_ui()
         self.load_settings()
-        self.check_for_updates()
+        self.bind('<<UpdateAvailable>>', self._on_update_available)
+        self.bind('<<UpdateCheckComplete>>', self._on_update_check_complete)
+        self.bind('<<UpdateCheckError>>', self._on_update_check_error)
+        self.bind('<<UpdateCheckFinished>>', self._on_update_check_finished)
+        self.after(1000, self.check_for_updates)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
     def load_share_history(self):
         if os.path.exists(self.history_file):
@@ -292,44 +296,87 @@ class FacebookAutomationGUI(ctk.CTk):
     def check_for_updates(self, manual=False):
         if manual:
             self.status_badge.configure(text="● CHECKING...", text_color=COLORS["warning"])
+        
         def _check():
             try:
                 import ssl
+                print(f"[DEBUG] Current version: {__version__}")
+                print(f"[DEBUG] Checking URL: {VERSION_CHECK_URL}")
+                
                 req = urllib.request.Request(VERSION_CHECK_URL, headers={'Cache-Control': 'no-cache'})
                 with urllib.request.urlopen(req, timeout=5, context=ssl._create_unverified_context()) as response:
                     remote_version = response.read().decode('utf-8').strip()
+                
+                print(f"[DEBUG] Remote version: {remote_version}")
+                print(f"[DEBUG] Versions match: {remote_version == __version__}")
+                
                 if remote_version and remote_version != __version__:
-                    self.after(0, lambda: self.show_update_popup(remote_version))
+                    print(f"[DEBUG] Update available! Showing popup...")
+                    self.update_available_version = remote_version
+                    self.event_generate('<<UpdateAvailable>>', when='tail')
                 else:
+                    print(f"[DEBUG] No update available")
                     if manual:
-                        self.after(0, lambda: messagebox.showinfo("Up to Date", f"Latest Version: V{__version__}"))
+                        self.event_generate('<<UpdateCheckComplete>>', when='tail')
             except Exception as e:
-                pass
+                print(f"[DEBUG] Error checking for updates: {e}")
+                import traceback
+                traceback.print_exc()
+                if manual:
+                    self.update_error_message = str(e)
+                    self.event_generate('<<UpdateCheckError>>', when='tail')
             finally:
                 if manual:
-                    self.after(0, lambda: self.status_badge.configure(text="● IDLE", text_color=COLORS["text_sub"]))
+                    self.event_generate('<<UpdateCheckFinished>>', when='tail')
+        
         threading.Thread(target=_check, daemon=True).start()
+    
     def show_update_popup(self, remote_version):
-        msg = f"A new update is available! (Version V{remote_version})\n\nWould you like to download and install the update now?"
+        print(f"[DEBUG] show_update_popup called with version: {remote_version}")
+        msg = f"A new update is available!\n\nCurrent Version: V{__version__}\nNew Version: V{remote_version}\n\nWould you like to download and install the update now?"
         response = messagebox.askyesno("Update Available", msg)
+        print(f"[DEBUG] User response: {response}")
+        
         if response:
             try:
+                print(f"[DEBUG] Downloading update from: {UPDATE_URL}")
                 import ssl
                 req = urllib.request.Request(UPDATE_URL, headers={'Cache-Control': 'no-cache'})
-                with urllib.request.urlopen(req, timeout=10,
-                                            context=ssl._create_unverified_context()) as download_response:
+                with urllib.request.urlopen(req, timeout=10, context=ssl._create_unverified_context()) as download_response:
                     new_code = download_response.read().decode('utf-8')
+                
+                print(f"[DEBUG] Downloaded {len(new_code)} bytes")
                 current_file = os.path.abspath(__file__)
+                print(f"[DEBUG] Writing to: {current_file}")
+                
                 with open(current_file, 'w', encoding='utf-8') as f:
                     f.write(new_code)
-                messagebox.showinfo("Update Complete",
-                                    "The application has been updated successfully. It will now restart.")
+                
+                messagebox.showinfo("Update Complete", "The application has been updated successfully. It will now restart.")
+                print(f"[DEBUG] Restarting application...")
                 os.execl(sys.executable, sys.executable, *sys.argv)
             except Exception as e:
+                print(f"[DEBUG] Update failed: {e}")
+                import traceback
+                traceback.print_exc()
                 messagebox.showerror("Update Failed", f"An error occurred while updating:\n{e}")
-                self.after(6000, self.check_for_updates)
         else:
-            self.after(6000, self.check_for_updates)
+            messagebox.showinfo("Update Skipped", "You can update later from the Dashboard.")
+    
+    def _on_update_available(self, event):
+        if hasattr(self, 'update_available_version'):
+            self.show_update_popup(self.update_available_version)
+    
+    def _on_update_check_complete(self, event):
+        messagebox.showinfo("Up to Date", f"You are using the latest version: V{__version__}")
+    
+    def _on_update_check_error(self, event):
+        if hasattr(self, 'update_error_message'):
+            messagebox.showerror("Update Check Failed", f"Could not check for updates:\n{self.update_error_message}")
+    
+    def _on_update_check_finished(self, event):
+        self.status_badge.configure(text="● IDLE", text_color=COLORS["text_sub"])
+    
     def play_tab_transition(self, tab_frame):
         overlay = ctk.CTkFrame(tab_frame, fg_color=COLORS["bg_main"], corner_radius=0)
         overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -389,7 +436,7 @@ class FacebookAutomationGUI(ctk.CTk):
         dev_credit_frame = ctk.CTkFrame(text_container, fg_color="transparent")
         dev_credit_frame.pack(anchor="w", pady=(3, 0))
         
-        ctk.CTkLabel(dev_credit_frame, text="Developed With Love", 
+        ctk.CTkLabel(dev_credit_frame, text="Developed With",
                     font=("Segoe UI", 12), 
                     text_color=COLORS["text_sub"]).pack(side="left", padx=(0, 5))
         
@@ -1220,7 +1267,7 @@ class FacebookAutomationGUI(ctk.CTk):
         except Exception as e:
             pass
     def setup(self):
-        Dars = False
+        Dars = True
         self.tab_settings.grid_columnconfigure(0, weight=1)
         self.tab_settings.grid_rowconfigure(0, weight=1)
         settings_scroll = ctk.CTkScrollableFrame(self.tab_settings, fg_color="transparent")
